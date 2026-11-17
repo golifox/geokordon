@@ -6,6 +6,7 @@ install_ru_block() {
 
 	# The port we are connected through always stays open.
 	echo "tcp $SSH_PORT" >>/etc/ru-block.ports
+	allow_install
 
 	install -m 755 "$DIR/files/ru-block-update" /usr/local/sbin/ru-block-update
 	install -m 644 "$DIR/files/ru-block.service" "$DIR/files/ru-block.timer" /etc/systemd/system/
@@ -13,4 +14,5 @@ install_ru_block() {
 	/usr/local/sbin/ru-block-update
 	systemctl enable --now ru-block.timer >/dev/null 2>&1
 	echo "IPv4 ranges loaded: $(nft list set inet ru_block ru4 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?' | wc -l)"
+	allow_show
 }

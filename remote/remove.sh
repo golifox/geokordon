@@ -7,7 +7,7 @@ remove_ru_block() {
 	systemctl disable --now ru-block.timer 2>/dev/null || true
 	nft delete table inet ru_block 2>/dev/null || true
 	rm -f /etc/systemd/system/ru-block.service /etc/systemd/system/ru-block.timer \
-		/usr/local/sbin/ru-block-update /etc/ru-block.ports
+		/usr/local/sbin/ru-block-update /etc/ru-block.ports "$ALLOW_FILE"
 	rm -rf /var/lib/ru-block
 	systemctl daemon-reload
 	echo "ru-block removed"

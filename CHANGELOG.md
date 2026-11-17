@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Direct list: hosts, IPs and subnets in a local, git-ignored `allow.list` skip both the geoblock and WARP, for servers in Russia and for IP whitelists that expect the server's own IP. `./ru-block install` and `./ru-block allow` send it to the server; host names resolve there on every refresh.
+
 ## [0.1.0] - 2026-11-17
 
 ### Added

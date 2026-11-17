@@ -1,0 +1,7 @@
+# Direct list: copy to allow.list and fill in. One host, IP or subnet per line.
+# These addresses skip the geoblock and WARP, so servers with an IP whitelist see the
+# VPN server's own IP. Host names resolve on the server on every refresh.
+#
+# example.ru
+# 203.0.113.10
+# 198.51.100.0/24

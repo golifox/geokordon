@@ -22,11 +22,11 @@ ssh_prompt() {
 }
 
 # Password mode feeds the password to ssh through SSH_ASKPASS; key mode checks the login
-# and passwordless sudo up front, so a failure explains its fix.
+# and passwordless sudo up front, so a failure explains its fix. The helper lives in
+# WORK_DIR, which the caller removes on exit.
 ssh_prepare() {
 	if [ -n "$password" ]; then
-		askpass="$(mktemp)"
-		trap 'rm -f "$askpass"' EXIT
+		askpass="$WORK_DIR/askpass"
 		# shellcheck disable=SC2016 # $RU_BLOCK_PASSWORD expands when ssh runs the helper.
 		printf '#!/bin/sh\nprintf "%%s\\n" "$RU_BLOCK_PASSWORD"\n' >"$askpass"
 		chmod 700 "$askpass"

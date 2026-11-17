@@ -20,8 +20,11 @@ amnezia_subnets() {
 }
 
 up() {
-	local subnets
+	local subnets allowed direct=""
 	subnets="$(amnezia_subnets)"
+	# The direct list, resolved by ru-block-update, stays off WARP: it sees the server's stable IP.
+	allowed="$(awk '/^[0-9.]+(\/[0-9]+)?$/' /var/lib/ru-block/allow.resolved 2>/dev/null | paste -sd, - || true)"
+	if [ -n "$allowed" ]; then direct="elements = { $allowed }"; fi
 	if [ -z "$subnets" ]; then
 		echo "ru-block-warp: no Docker networks of Amnezia containers found" >&2
 		exit 1
@@ -36,10 +39,11 @@ table ip ru_block_warp {
     type ipv4_addr; flags interval
     elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3 }
   }
+  set direct { type ipv4_addr; flags interval; auto-merge; $direct }
   chain prerouting {
     type filter hook prerouting priority mangle; policy accept;
     # Only connections the containers open; replies to VPN clients are the reply direction.
-    ct direction original ip saddr @amnezia ip daddr != @private fib daddr type != local meta mark set $MARK
+    ct direction original ip saddr @amnezia ip daddr != @private ip daddr != @direct fib daddr type != local meta mark set $MARK
   }
   chain forward {
     type filter hook forward priority mangle; policy accept;
