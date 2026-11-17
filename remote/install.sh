@@ -10,10 +10,13 @@ install_geokordon() {
 	allow_install
 
 	install -m 755 "$DIR/files/geokordon-update" /usr/local/sbin/geokordon-update
-	install -m 644 "$DIR/files/geokordon.service" "$DIR/files/geokordon.timer" /etc/systemd/system/
+	install -m 644 "$DIR/files/geokordon.service" "$DIR/files/geokordon.timer" \
+		"$DIR/files/geokordon-restore.service" /etc/systemd/system/
 	systemctl daemon-reload
 	/usr/local/sbin/geokordon-update
 	systemctl enable --now geokordon.timer >/dev/null 2>&1
+	# Not started now: the table is already loaded; it loads the cache on the next boot.
+	systemctl enable geokordon-restore.service >/dev/null 2>&1
 	echo "IPv4 ranges loaded: $(nft list set inet geokordon ru4 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?' | wc -l)"
 	allow_show
 

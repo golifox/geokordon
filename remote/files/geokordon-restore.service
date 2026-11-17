@@ -1,0 +1,17 @@
+[Unit]
+Description=Load the cached geoblock on boot, before the network is up
+# Ordered like nftables.service; geokordon.timer refreshes the lists later.
+DefaultDependencies=no
+Wants=network-pre.target
+After=local-fs.target nftables.service
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/var/lib/geokordon/geokordon.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /var/lib/geokordon/geokordon.nft
+
+[Install]
+WantedBy=sysinit.target

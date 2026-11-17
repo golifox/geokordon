@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- After a reboot the server stayed without the geoblock until `geokordon.timer` fired, up to an hour later. `geokordon-restore.service` now loads the cached rules before the network is up. Run `./geokordon install` to add it to a server.
+- Host names made of hex letters (`bbc.de`, `fb.ee`) in the direct list were taken for addresses and broke the refresh. Addresses and host names now follow the same strict rules locally and on the server, the server skips invalid entries, and generated rules pass `nft -c` before they replace the current ones.
+- A truncated or altered ipdeny.com answer could narrow the block silently. A download replaces the cached list only when every line is a prefix and there are at least 1000 IPv4 / 200 IPv6 prefixes and half of the cached count.
+
 ## [0.3.0] - 2026-11-17
 
 ### Added

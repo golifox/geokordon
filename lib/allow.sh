@@ -8,11 +8,19 @@ allow_entries() {
 	fi
 }
 
-# allow_check ENTRY...: exit unless every entry looks like a host, IP or subnet.
+# Same rules as resolve_allow in remote/files/geokordon-update: an address has dots and
+# digits only or a colon; anything else must be a host name.
+IPV4_OCTET='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+IPV4="^$IPV4_OCTET(\.$IPV4_OCTET){3}(/([0-9]|[12][0-9]|3[0-2]))?$"
+IPV6='^[0-9A-Fa-f.]*:[0-9A-Fa-f:.]*(/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$'
+HOST_LABEL='[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
+HOST="^($HOST_LABEL\.)*$HOST_LABEL$"
+
+# allow_check ENTRY...: exit unless every entry is a host, IP or subnet.
 allow_check() {
 	local entry
 	for entry in "$@"; do
-		[[ "$entry" =~ ^[0-9A-Za-z.:-]+(/[0-9]{1,3})?$ ]] || {
+		[[ "$entry" =~ $IPV4 || "$entry" =~ $IPV6 || ("$entry" =~ $HOST && ! "$entry" =~ ^[0-9.]+$) ]] || {
 			echo "Not a host, IP or subnet: $entry" >&2
 			exit 1
 		}

@@ -1,5 +1,5 @@
 [Unit]
-Description=Apply on boot and refresh RU IP ranges daily
+Description=Refresh RU IP ranges after boot and daily
 
 [Timer]
 OnBootSec=1min

@@ -31,7 +31,8 @@ Requirements: Debian or Ubuntu with Amnezia in Docker on the server; `bash`, `ta
 ## On the server
 
 - nftables table `inet geokordon`; the rest of the firewall and Docker rules stay untouched.
-- Ranges from [ipdeny.com](https://www.ipdeny.com), refreshed on boot and daily by `geokordon.timer`.
+- Ranges from [ipdeny.com](https://www.ipdeny.com), refreshed after boot and daily by `geokordon.timer`. A download replaces the cached list only when every line is a prefix and the count holds (at least 1000 IPv4 / 200 IPv6 and half of the cached one); generated rules pass `nft -c` before they replace the current ones.
+- On boot `geokordon-restore.service` loads the last applied rules from `/var/lib/geokordon/geokordon.nft` before the network is up, without downloading anything.
 - Open ports are detected from `sshd` and `amnezia-*` containers and kept in `/etc/geokordon.ports`. Add a missing one with `echo "udp 51820" >> /etc/geokordon.ports && geokordon-update`.
 - WARP: a free account made by [wgcf](https://github.com/ViRb3/wgcf), interface `wg-quick@warp`, routing in `geokordon-warp.service`. Replies to VPN clients, SSH and the server's own traffic keep the direct route. `warp on` checks the route from the host and from a container and switches back if either fails.
 - Direct list in `/etc/geokordon.allow`; host names resolve on every refresh, so a changed IP is picked up within a day (or at once with `./geokordon allow sync`). Hosts behind a CDN change IPs often: prefer their subnets.
