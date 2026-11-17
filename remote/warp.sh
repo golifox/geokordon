@@ -4,10 +4,10 @@
 # Uses DIR from run.sh.
 
 WGCF_VERSION=2.3.1
-WARP_DIR=/etc/ru-block-warp
+WARP_DIR=/etc/geokordon-warp
 WARP_CONF=/etc/wireguard/warp.conf
-WARP_UNIT=/etc/systemd/system/ru-block-warp.service
-WARP_SYSCTL=/etc/sysctl.d/90-ru-block-warp.conf
+WARP_UNIT=/etc/systemd/system/geokordon-warp.service
+WARP_SYSCTL=/etc/sysctl.d/90-geokordon-warp.conf
 TRACE_URL=https://1.1.1.1/cdn-cgi/trace
 
 warp_on() {
@@ -19,8 +19,8 @@ warp_on() {
 
 	warp_profile
 	warp_write_config
-	install -m 755 "$DIR/files/ru-block-warp" /usr/local/sbin/ru-block-warp
-	install -m 644 "$DIR/files/ru-block-warp.service" "$WARP_UNIT"
+	install -m 755 "$DIR/files/geokordon-warp" /usr/local/sbin/geokordon-warp
+	install -m 644 "$DIR/files/geokordon-warp.service" "$WARP_UNIT"
 	# Replies from WARP arrive on another interface than the default route: loose reverse path.
 	printf 'net.ipv4.conf.all.rp_filter = 2\nnet.ipv4.conf.default.rp_filter = 2\n' >"$WARP_SYSCTL"
 	sysctl -q -p "$WARP_SYSCTL"
@@ -28,11 +28,11 @@ warp_on() {
 
 	# Safety net: if this run dies midway, WARP switches itself off in 5 minutes.
 	warp_cancel_rollback
-	systemd-run --quiet --unit ru-block-warp-rollback --on-active=300 /usr/local/sbin/ru-block-warp disable
+	systemd-run --quiet --unit geokordon-warp-rollback --on-active=300 /usr/local/sbin/geokordon-warp disable
 
-	systemctl enable wg-quick@warp.service ru-block-warp.service >/dev/null 2>&1
+	systemctl enable wg-quick@warp.service geokordon-warp.service >/dev/null 2>&1
 	systemctl restart wg-quick@warp.service
-	systemctl restart ru-block-warp.service
+	systemctl restart geokordon-warp.service
 
 	local trace="" container_status=0
 	trace="$(warp_host_trace)" || true
@@ -40,7 +40,7 @@ warp_on() {
 		warp_container_check || container_status=$?
 	fi
 	if [[ "$trace" != *warp=on* ]] || [ "$container_status" = 1 ]; then
-		/usr/local/sbin/ru-block-warp disable
+		/usr/local/sbin/geokordon-warp disable
 		warp_cancel_rollback
 		echo "WARP check failed, traffic goes direct again" >&2
 		exit 1
@@ -54,8 +54,8 @@ warp_on() {
 }
 
 warp_off() {
-	if [ -x /usr/local/sbin/ru-block-warp ]; then
-		/usr/local/sbin/ru-block-warp disable
+	if [ -x /usr/local/sbin/geokordon-warp ]; then
+		/usr/local/sbin/geokordon-warp disable
 	fi
 	echo "WARP off: traffic goes direct"
 }
@@ -63,17 +63,17 @@ warp_off() {
 # warp_purge: switch WARP off and delete its account, config and helpers.
 warp_purge() {
 	warp_cancel_rollback
-	if [ -x /usr/local/sbin/ru-block-warp ]; then
-		/usr/local/sbin/ru-block-warp disable
+	if [ -x /usr/local/sbin/geokordon-warp ]; then
+		/usr/local/sbin/geokordon-warp disable
 	fi
 	rm -rf "$WARP_DIR"
-	rm -f "$WARP_CONF" "$WARP_UNIT" "$WARP_SYSCTL" /usr/local/sbin/ru-block-warp
+	rm -f "$WARP_CONF" "$WARP_UNIT" "$WARP_SYSCTL" /usr/local/sbin/geokordon-warp
 	systemctl daemon-reload
 }
 
 warp_cancel_rollback() {
-	systemctl stop ru-block-warp-rollback.timer 2>/dev/null || true
-	systemctl reset-failed ru-block-warp-rollback.service ru-block-warp-rollback.timer 2>/dev/null || true
+	systemctl stop geokordon-warp-rollback.timer 2>/dev/null || true
+	systemctl reset-failed geokordon-warp-rollback.service geokordon-warp-rollback.timer 2>/dev/null || true
 }
 
 # warp_profile: register a free WARP account once and keep it for later runs.
@@ -105,7 +105,7 @@ warp_profile() {
 	}
 }
 
-# warp_write_config: wg-quick config without its own routes; ru-block-warp.service routes only Amnezia.
+# warp_write_config: wg-quick config without its own routes; geokordon-warp.service routes only Amnezia.
 warp_write_config() {
 	local profile="$WARP_DIR/wgcf-profile.conf" key address peer endpoint
 	key="$(sed -n 's/^PrivateKey *= *//p' "$profile")"

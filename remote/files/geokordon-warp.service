@@ -6,8 +6,8 @@ After=wg-quick@warp.service docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/ru-block-warp up
-ExecStop=/usr/local/sbin/ru-block-warp down
+ExecStart=/usr/local/sbin/geokordon-warp up
+ExecStop=/usr/local/sbin/geokordon-warp down
 
 [Install]
 WantedBy=wg-quick@warp.service

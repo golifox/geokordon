@@ -1,14 +1,14 @@
 # shellcheck shell=bash
 # remove: undo install and warp.
 
-remove_ru_block() {
+remove_geokordon() {
 	warp_purge
 
-	systemctl disable --now ru-block.timer 2>/dev/null || true
-	nft delete table inet ru_block 2>/dev/null || true
-	rm -f /etc/systemd/system/ru-block.service /etc/systemd/system/ru-block.timer \
-		/usr/local/sbin/ru-block-update /etc/ru-block.ports "$ALLOW_FILE"
-	rm -rf /var/lib/ru-block
+	systemctl disable --now geokordon.timer 2>/dev/null || true
+	nft delete table inet geokordon 2>/dev/null || true
+	rm -f /etc/systemd/system/geokordon.service /etc/systemd/system/geokordon.timer \
+		/usr/local/sbin/geokordon-update /etc/geokordon.ports "$ALLOW_FILE"
+	rm -rf /var/lib/geokordon
 	systemctl daemon-reload
-	echo "ru-block removed"
+	echo "geokordon removed"
 }

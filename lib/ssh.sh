@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# SSH side of ru-block: prompts, login by password or key, upload and run of remote/ as root.
+# SSH side of geokordon: prompts, login by password or key, upload and run of remote/ as root.
 
 ssh_prompt() {
 	read -r -p "Server IP: " server
@@ -27,10 +27,10 @@ ssh_prompt() {
 ssh_prepare() {
 	if [ -n "$password" ]; then
 		askpass="$WORK_DIR/askpass"
-		# shellcheck disable=SC2016 # $RU_BLOCK_PASSWORD expands when ssh runs the helper.
-		printf '#!/bin/sh\nprintf "%%s\\n" "$RU_BLOCK_PASSWORD"\n' >"$askpass"
+		# shellcheck disable=SC2016 # $GEOKORDON_PASSWORD expands when ssh runs the helper.
+		printf '#!/bin/sh\nprintf "%%s\\n" "$GEOKORDON_PASSWORD"\n' >"$askpass"
 		chmod 700 "$askpass"
-		export RU_BLOCK_PASSWORD="$password" SSH_ASKPASS="$askpass" SSH_ASKPASS_REQUIRE=force DISPLAY="${DISPLAY:-:0}"
+		export GEOKORDON_PASSWORD="$password" SSH_ASKPASS="$askpass" SSH_ASKPASS_REQUIRE=force DISPLAY="${DISPLAY:-:0}"
 		return
 	fi
 

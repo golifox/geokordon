@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Close an Amnezia VPN exit server to Russian IP ranges, optionally route its traffic through WARP.
 #
-# Usage: ./ru-block COMMAND
-#   install               install or update the geoblock (sends allow.list too)
+# Usage: ./geokordon COMMAND
+#   install [--with-warp | --without-warp]
+#                         install or update the geoblock (sends allow.list too), then switch
+#                         WARP on or off; without a flag WARP stays as it is
 #   warp on | warp off    route Amnezia traffic through Cloudflare WARP, or back to direct
 #   allow add ENTRY...    add hosts, IPs or subnets to allow.list, then sync
 #   allow del ENTRY...    remove them from allow.list, then sync
@@ -12,23 +14,30 @@
 # Asks for the server IP, SSH port (default 22), user (default root) and password; an empty
 # password uses SSH keys. A user other than root runs everything through sudo.
 #
-# allow.list (next to this script, or $RU_BLOCK_ALLOW) holds the direct list: entries that
+# allow.list (next to this script, or $GEOKORDON_ALLOW) holds the direct list: entries that
 # skip the geoblock and WARP.
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALLOW_LIST="${RU_BLOCK_ALLOW:-$ROOT/allow.list}"
+ALLOW_LIST="${GEOKORDON_ALLOW:-$ROOT/allow.list}"
 source "$ROOT/lib/ssh.sh"
 source "$ROOT/lib/allow.sh"
 
 usage() {
-	sed -n 's/^#   //p' "$ROOT/ru-block" | sed 's/^/  /' >&2
+	sed -n 's/^#   //p' "$ROOT/geokordon" | sed 's/^/  /' >&2
 	exit 1
 }
 
 case "${1:-install}" in
-install | remove) args=("${1:-install}") ;;
+install)
+	args=(install)
+	if [ $# -gt 1 ]; then
+		[[ "$2" =~ ^--with(out)?-warp$ ]] || usage
+		args+=("$2")
+	fi
+	;;
+remove) args=(remove) ;;
 warp)
 	[[ "${2:-}" =~ ^(on|off)$ ]] || usage
 	args=(warp "$2")

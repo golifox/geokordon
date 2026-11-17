@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# WARP routing for Amnezia containers, installed to /usr/local/sbin/ru-block-warp.
-#   up       ru-block-warp.service start: mark connections opened by Amnezia containers, route them to warp
-#   down     ru-block-warp.service stop: drop the marks and routes
-#   disable  stop WARP for good (also the rollback timer of `ru-block warp on`)
+# WARP routing for Amnezia containers, installed to /usr/local/sbin/geokordon-warp.
+#   up       geokordon-warp.service start: mark connections opened by Amnezia containers, route them to warp
+#   down     geokordon-warp.service stop: drop the marks and routes
+#   disable  stop WARP for good (also the rollback timer of `geokordon warp on`)
 # The routing lives in its own unit, bound to wg-quick@warp: AppArmor forbids wg-quick to run PostUp scripts.
 set -euo pipefail
 
@@ -22,18 +22,18 @@ amnezia_subnets() {
 up() {
 	local subnets allowed direct=""
 	subnets="$(amnezia_subnets)"
-	# The direct list, resolved by ru-block-update, stays off WARP: it sees the server's stable IP.
-	allowed="$(awk '/^[0-9.]+(\/[0-9]+)?$/' /var/lib/ru-block/allow.resolved 2>/dev/null | paste -sd, - || true)"
+	# The direct list, resolved by geokordon-update, stays off WARP: it sees the server's stable IP.
+	allowed="$(awk '/^[0-9.]+(\/[0-9]+)?$/' /var/lib/geokordon/allow.resolved 2>/dev/null | paste -sd, - || true)"
 	if [ -n "$allowed" ]; then direct="elements = { $allowed }"; fi
 	if [ -z "$subnets" ]; then
-		echo "ru-block-warp: no Docker networks of Amnezia containers found" >&2
+		echo "geokordon-warp: no Docker networks of Amnezia containers found" >&2
 		exit 1
 	fi
 
 	nft -f - <<EOF
-table ip ru_block_warp
-delete table ip ru_block_warp
-table ip ru_block_warp {
+table ip geokordon_warp
+delete table ip geokordon_warp
+table ip geokordon_warp {
   set amnezia { type ipv4_addr; flags interval; elements = { $subnets } }
   set private {
     type ipv4_addr; flags interval
@@ -63,14 +63,14 @@ EOF
 down() {
 	ip rule del fwmark "$MARK" lookup "$TABLE" 2>/dev/null || true
 	ip route flush table "$TABLE" 2>/dev/null || true
-	nft delete table ip ru_block_warp 2>/dev/null || true
+	nft delete table ip geokordon_warp 2>/dev/null || true
 }
 
 case "${1:-}" in
 up) up ;;
 down) down ;;
 disable)
-	systemctl disable --now ru-block-warp.service wg-quick@warp.service >/dev/null 2>&1 || true
+	systemctl disable --now geokordon-warp.service wg-quick@warp.service >/dev/null 2>&1 || true
 	down
 	;;
 *)

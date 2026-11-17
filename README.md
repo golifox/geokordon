@@ -1,4 +1,4 @@
-# amnezia-ru-block
+# geokordon
 
 Closes an Amnezia VPN exit server to Russian IP ranges with one command from your machine, and optionally sends its traffic out through Cloudflare WARP.
 
@@ -10,29 +10,31 @@ Closes an Amnezia VPN exit server to Russian IP ranges with one command from you
 ## Usage
 
 ```bash
-./ru-block             # install or update the geoblock
-./ru-block warp on     # route Amnezia traffic through WARP
-./ru-block warp off    # back to direct
-./ru-block allow add example.ru 203.0.113.10   # add to allow.list, then sync
-./ru-block allow del 203.0.113.10              # remove from allow.list, then sync
-./ru-block allow sync  # send allow.list to the server
-./ru-block allow list  # the direct list on the server, with resolved addresses
-./ru-block remove      # remove everything, WARP included
+./geokordon             # install or update the geoblock; WARP stays as it is
+./geokordon install --with-warp      # the same, then route Amnezia traffic through WARP
+./geokordon install --without-warp   # the same, then switch WARP off
+./geokordon warp on     # route Amnezia traffic through WARP
+./geokordon warp off    # back to direct
+./geokordon allow add example.ru 203.0.113.10   # add to allow.list, then sync
+./geokordon allow del 203.0.113.10              # remove from allow.list, then sync
+./geokordon allow sync  # send allow.list to the server
+./geokordon allow list  # the direct list on the server, with resolved addresses
+./geokordon remove      # remove everything, WARP included
 ```
 
 It asks for the server IP, SSH port (default `22`), user (default `root`) and password. An empty password uses SSH keys; a non-root user then needs passwordless `sudo`.
 
-Direct list: the local, git-ignored `allow.list` (one host, IP or subnet per line; `RU_BLOCK_ALLOW` points to another path) is the source of truth. `allow add|del` edit it, `install` and `allow sync` replace the server's list with it; without the file `install` leaves the server's list as is.
+Direct list: the local, git-ignored `allow.list` (one host, IP or subnet per line; `GEOKORDON_ALLOW` points to another path) is the source of truth. `allow add|del` edit it, `install` and `allow sync` replace the server's list with it; without the file `install` leaves the server's list as is.
 
 Requirements: Debian or Ubuntu with Amnezia in Docker on the server; `bash`, `tar` and OpenSSH 8.4+ locally (macOS, Linux, or Git Bash on Windows).
 
 ## On the server
 
-- nftables table `inet ru_block`; the rest of the firewall and Docker rules stay untouched.
-- Ranges from [ipdeny.com](https://www.ipdeny.com), refreshed on boot and daily by `ru-block.timer`.
-- Open ports are detected from `sshd` and `amnezia-*` containers and kept in `/etc/ru-block.ports`. Add a missing one with `echo "udp 51820" >> /etc/ru-block.ports && ru-block-update`.
-- WARP: a free account made by [wgcf](https://github.com/ViRb3/wgcf), interface `wg-quick@warp`, routing in `ru-block-warp.service`. Replies to VPN clients, SSH and the server's own traffic keep the direct route. `warp on` checks the route from the host and from a container and switches back if either fails.
-- Direct list in `/etc/ru-block.allow`; host names resolve on every refresh, so a changed IP is picked up within a day (or at once with `./ru-block allow sync`). Hosts behind a CDN change IPs often: prefer their subnets.
+- nftables table `inet geokordon`; the rest of the firewall and Docker rules stay untouched.
+- Ranges from [ipdeny.com](https://www.ipdeny.com), refreshed on boot and daily by `geokordon.timer`.
+- Open ports are detected from `sshd` and `amnezia-*` containers and kept in `/etc/geokordon.ports`. Add a missing one with `echo "udp 51820" >> /etc/geokordon.ports && geokordon-update`.
+- WARP: a free account made by [wgcf](https://github.com/ViRb3/wgcf), interface `wg-quick@warp`, routing in `geokordon-warp.service`. Replies to VPN clients, SSH and the server's own traffic keep the direct route. `warp on` checks the route from the host and from a container and switches back if either fails.
+- Direct list in `/etc/geokordon.allow`; host names resolve on every refresh, so a changed IP is picked up within a day (or at once with `./geokordon allow sync`). Hosts behind a CDN change IPs often: prefer their subnets.
 
 ## Notes
 
@@ -43,7 +45,7 @@ Requirements: Debian or Ubuntu with Amnezia in Docker on the server; `bash`, `ta
 
 | Path | Role |
 | --- | --- |
-| `ru-block` | entry point: arguments and command dispatch |
+| `geokordon` | entry point: arguments and command dispatch |
 | `lib/ssh.sh` | prompts, password or key login, upload and run as root |
 | `lib/allow.sh` | local `allow.list`: entries, validation, add and del |
 | `remote/` | copied to the server per run: `run.sh` dispatches to `install.sh`, `warp.sh`, `allow.sh`, `remove.sh` |
