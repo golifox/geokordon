@@ -7,7 +7,7 @@ shfmt = "3.14.1"
 description = "shellcheck and shfmt over every script"
 run = [
   # lib/ is checked through the source lines of geokordon.
-  "shellcheck -x geokordon scripts/build install.sh",
+  "shellcheck -x geokordon scripts/build install.sh test/container.sh test/smoke-rocky.sh",
   "shfmt -d geokordon lib scripts/build install.sh test",
 ]
 

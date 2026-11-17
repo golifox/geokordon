@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- `geokordon config countries ru,by`: block any countries ipdeny.com lists, not only Russia.
+- `geokordon config containers '^(amnezia|3x-ui)'`: the VPN containers by a name pattern, so 3x-ui, Marzban, plain WireGuard and others get their ports opened and their traffic routed through WARP.
+- `config` without arguments shows the settings. A setting is checked, saved to `/etc/geokordon/config` and applied at once; if applying fails, it goes back as it was.
+- The RHEL family: packages through dnf on Rocky, Alma, RHEL and Fedora. CI runs the tests on Rocky 9 too, and a full install–config–remove run with systemd and firewalld.
+
+### Changed
+
+- The nft sets are `geo4`/`geo6` instead of `ru4`/`ru6`; `status` shows the blocked countries and the container pattern.
+- The download check no longer needs 1000 IPv4 / 200 IPv6 prefixes, which small countries never reach: every line must be a prefix, there must be at least half as many as cached, and at least 10 IPv4 prefixes on a country's first download.
+- Descriptions speak of a VPN server in Docker; Amnezia stays the default.
+
 ## [0.5.0] - 2026-11-17
 
 ### Added

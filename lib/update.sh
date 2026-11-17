@@ -1,10 +1,11 @@
 # shellcheck shell=bash
-# update: rebuild the nftables table geokordon. RU sources reach only SSH and the container
-# ports; forwarded connections to RU destinations are rejected.
+# update: rebuild the nftables table geokordon. Sources in the blocked countries reach only
+# SSH and the container ports; forwarded connections to them are rejected.
 
 PORTS_FILE=$ETC_DIR/ports
 NFT_FILE=$CACHE/geokordon.nft
-CONTAINERS='^amnezia'
+V4_ZONES=https://www.ipdeny.com/ipblocks/data/aggregated
+V6_ZONES=https://www.ipdeny.com/ipv6/ipaddresses/aggregated
 V4_PREFIX='^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$'
 V6_PREFIX='^[0-9a-f:]+/[0-9]{1,3}$'
 
@@ -64,7 +65,7 @@ ports_detect() {
 	fi
 }
 
-# ports_all: the ports open for RU sources, from ports_detect and PORTS_FILE.
+# ports_all: the ports open for blocked sources, from ports_detect and PORTS_FILE.
 ports_all() {
 	{
 		sed 's/#.*//' "$PORTS_FILE" 2>/dev/null || true
@@ -78,9 +79,9 @@ rules_generate() {
 	echo "table inet geokordon"
 	echo "delete table inet geokordon"
 	echo "table inet geokordon {"
-	echo "  set ru4 { type ipv4_addr; flags interval; auto-merge; elements = { $v4 } }"
+	echo "  set geo4 { type ipv4_addr; flags interval; auto-merge; elements = { $v4 } }"
 	if [ -n "$v6" ]; then
-		echo "  set ru6 { type ipv6_addr; flags interval; auto-merge; elements = { $v6 } }"
+		echo "  set geo6 { type ipv6_addr; flags interval; auto-merge; elements = { $v6 } }"
 	fi
 	if [ -n "$allow4" ]; then
 		echo "  set allow4 { type ipv4_addr; flags interval; auto-merge; elements = { $allow4 } }"
@@ -97,22 +98,22 @@ rules_generate() {
 	if [ -n "$allow6" ]; then echo "    ip6 saddr @allow6 accept"; fi
 	if [ -n "$tcp" ]; then echo "    tcp dport { $tcp } accept"; fi
 	if [ -n "$udp" ]; then echo "    udp dport { $udp } accept"; fi
-	echo "    ip saddr @ru4 drop"
-	if [ -n "$v6" ]; then echo "    ip6 saddr @ru6 drop"; fi
+	echo "    ip saddr @geo4 drop"
+	if [ -n "$v6" ]; then echo "    ip6 saddr @geo6 drop"; fi
 	echo "  }"
 	echo "  chain forward {"
-	# VPN clients must not reach RU destinations through this server.
-	# Only connections initiated towards RU; replies to RU clients stay allowed.
+	# VPN clients must not reach the blocked countries through this server.
+	# Only connections initiated towards them; replies to clients there stay allowed.
 	# TCP gets a reset: macOS and other BSD stacks ignore ICMP unreachable while connecting
 	# and would hang until timeout.
 	echo "    type filter hook forward priority -10; policy accept;"
 	if [ -n "$allow4" ]; then echo "    ip daddr @allow4 accept"; fi
 	if [ -n "$allow6" ]; then echo "    ip6 daddr @allow6 accept"; fi
-	echo "    ct direction original ip daddr @ru4 meta l4proto tcp reject with tcp reset"
-	echo "    ct direction original ip daddr @ru4 reject"
+	echo "    ct direction original ip daddr @geo4 meta l4proto tcp reject with tcp reset"
+	echo "    ct direction original ip daddr @geo4 reject"
 	if [ -n "$v6" ]; then
-		echo "    ct direction original ip6 daddr @ru6 meta l4proto tcp reject with tcp reset"
-		echo "    ct direction original ip6 daddr @ru6 reject"
+		echo "    ct direction original ip6 daddr @geo6 meta l4proto tcp reject with tcp reset"
+		echo "    ct direction original ip6 daddr @geo6 reject"
 	fi
 	echo "  }"
 	echo "}"
@@ -126,13 +127,19 @@ cmd_update() {
 # update_apply: download, generate, check with nft -c, then replace the cache and the table.
 # geokordon-restore.service loads the cached file on boot, so only a checked one lands there.
 update_apply() {
-	local v4 v6 allow4 allow6 tcp udp
+	local v4 v6 allow4 allow6 tcp udp cc zones4=() zones6=()
 	mkdir -p "$CACHE"
-	prefix_fetch https://www.ipdeny.com/ipblocks/data/aggregated/ru-aggregated.zone "$CACHE/ru4.zone" "$V4_PREFIX" 1000
-	prefix_fetch https://www.ipdeny.com/ipv6/ipaddresses/aggregated/ru-aggregated.zone "$CACHE/ru6.zone" "$V6_PREFIX" 200
-	[ -s "$CACHE/ru4.zone" ] || die "no RU IPv4 list, nothing applied"
-	v4="$(awk 'NF' "$CACHE/ru4.zone" | paste -sd, -)"
-	v6="$(awk 'NF' "$CACHE/ru6.zone" 2>/dev/null | paste -sd, - || true)"
+	# The first download of a country needs a few prefixes; later ones at least half the cache.
+	for cc in ${COUNTRIES//,/ }; do
+		prefix_fetch "$V4_ZONES/$cc-aggregated.zone" "$CACHE/${cc}4.zone" "$V4_PREFIX" 10
+		prefix_fetch "$V6_ZONES/$cc-aggregated.zone" "$CACHE/${cc}6.zone" "$V6_PREFIX" 1
+		[ -s "$CACHE/${cc}4.zone" ] || die "no IPv4 list for $cc, nothing applied"
+		zones4+=("$CACHE/${cc}4.zone")
+		if [ -s "$CACHE/${cc}6.zone" ]; then zones6+=("$CACHE/${cc}6.zone"); fi
+	done
+	v4="$(awk 'NF' "${zones4[@]}" | paste -sd, -)"
+	v6=""
+	if [ ${#zones6[@]} -gt 0 ]; then v6="$(awk 'NF' "${zones6[@]}" | paste -sd, -)"; fi
 
 	allow_resolve | sort -u >"$CACHE/allow.resolved.new"
 	allow4="$(awk '/^[0-9.]+(\/[0-9]+)?$/' "$CACHE/allow.resolved.new" | paste -sd, -)"
@@ -155,5 +162,5 @@ update_apply() {
 	if systemctl is-active --quiet geokordon-warp.service; then
 		warp_up
 	fi
-	echo "geokordon applied: open for RU -> tcp {$tcp} udp {$udp}"
+	echo "geokordon applied: blocked $COUNTRIES, open to them tcp {$tcp} udp {$udp}"
 }

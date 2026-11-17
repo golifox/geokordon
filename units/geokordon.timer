@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh RU IP ranges after boot and daily
+Description=Refresh the geoblock ranges after boot and daily
 
 [Timer]
 OnBootSec=1min
