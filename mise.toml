@@ -1,6 +1,24 @@
 [tools]
+bats = "1.14.0"
 shellcheck = "0.11.0"
+shfmt = "3.14.1"
 
 [tasks.lint]
-description = "shellcheck every script"
-run = "shellcheck -x geokordon lib/*.sh remote/*.sh remote/files/geokordon-update remote/files/geokordon-warp"
+description = "shellcheck and shfmt over every script"
+run = [
+  # lib/ is checked through the source lines of geokordon.
+  "shellcheck -x geokordon scripts/build install.sh",
+  "shfmt -d geokordon lib scripts/build install.sh test",
+]
+
+[tasks.fmt]
+description = "format every script with shfmt"
+run = "shfmt -w geokordon lib scripts/build install.sh test"
+
+[tasks.build]
+description = "build dist/geokordon"
+run = "scripts/build"
+
+[tasks.test]
+description = "bats tests (nft checks need Linux with nft and root, see test/README.md)"
+run = "bats test"

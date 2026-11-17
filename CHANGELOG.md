@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- `geokordon` lives on the server in `/usr/local/sbin` and does everything there: `sudo geokordon warp on` works without your machine.
+- `install.sh` in each release: `curl -fsSL …/releases/latest/download/install.sh | sudo bash`, checked against `SHA256SUMS`.
+- `-H TARGET` (or `GEOKORDON_HOST`) and `-p PORT`: the target goes to ssh as is, so aliases from `~/.ssh/config` work. The front runs its own copy over one ssh connection, so each password is asked once and nothing stays behind; a non-root user goes through `sudo`.
+- `update`, `status`, `allow push FILE`, `--help`, `--version`.
+- CI: shellcheck, shfmt, bats (with `nft -c` on generated rules), and an install–status–remove run on Ubuntu 22.04 and 24.04. Releases are built from a `v*` tag.
+
+### Changed
+
+- The direct list lives only on the server, in `/etc/geokordon/allow`: `allow add|del` edit it there, `install` leaves it alone, `remove` prints it before deleting. The local `allow.list`, `allow sync` and `GEOKORDON_ALLOW` are gone.
+- Without arguments `geokordon` prints its usage instead of running `install`.
+- Without a target it asks one question, the server; the SSH port, user and password prompts are gone, and so are the `SSH_ASKPASS` helper and the OpenSSH 8.4+ requirement.
+- State moved to `/etc/geokordon/` (`allow`, `ports`, `warp/`); the helpers `geokordon-update` and `geokordon-warp` became `geokordon update` and `geokordon warp up|down`.
+
+### Fixed
+
+- Open ports no longer pile up: they are found again on every update, and a removed container's ports close. `/etc/geokordon/ports` holds only the ports kept open by hand. Port ranges and stopped containers are covered.
+- `warp off` restores the original `rp_filter`.
+- The timer and a manual run can no longer collide.
+
+### Upgrade
+
+Run `geokordon -H root@host install` (or the `install.sh` line on the server): it moves `/etc/geokordon.allow`, `/etc/geokordon.ports` and `/etc/geokordon-warp` into `/etc/geokordon/` and removes the old helpers. WARP stays as it was. The old ports file becomes the hand-kept list, so drop ports there that no longer need to stay open. A server switched to WARP by 0.3.x has no saved `rp_filter`, so `warp off` leaves it at 2 there.
+
 ## [0.3.1] - 2026-11-17
 
 ### Fixed

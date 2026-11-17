@@ -1,13 +1,13 @@
 [Unit]
-Description=Route Amnezia containers through WARP
+Description=Route the VPN containers through WARP
 BindsTo=wg-quick@warp.service
 After=wg-quick@warp.service docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/geokordon-warp up
-ExecStop=/usr/local/sbin/geokordon-warp down
+ExecStart=/usr/local/sbin/geokordon warp up
+ExecStop=/usr/local/sbin/geokordon warp down
 
 [Install]
 WantedBy=wg-quick@warp.service

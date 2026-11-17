@@ -1,2 +1,2 @@
-# Personal direct list; allow.list.example shows the format.
-allow.list
+# Build output of scripts/build.
+dist/

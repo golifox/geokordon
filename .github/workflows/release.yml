@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/build
+      - name: The version in geokordon matches the tag
+        run: test "$(dist/geokordon --version)" = "geokordon ${GITHUB_REF_NAME#v}"
+      - name: Assets and notes
+        run: |
+          sed "s/^VERSION=latest$/VERSION=$GITHUB_REF_NAME/" install.sh >dist/install.sh
+          grep -qx "VERSION=$GITHUB_REF_NAME" dist/install.sh
+          (cd dist && sha256sum geokordon install.sh >SHA256SUMS)
+          awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## \\[" v "\\]" { f = 1; next } /^## \[/ { f = 0 } f' CHANGELOG.md >notes.md
+          test -s notes.md
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md dist/geokordon dist/install.sh dist/SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
