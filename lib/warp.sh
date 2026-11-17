@@ -233,7 +233,7 @@ warp_container_check() {
 		if docker exec "$container" sh -c 'command -v wget || command -v curl' >/dev/null 2>&1; then
 			docker exec "$container" sh -c \
 				"wget -qO- -T 10 $TRACE_URL 2>/dev/null || curl -fsS -m 10 $TRACE_URL" 2>/dev/null |
-				grep -q '^warp=on' && return 0
+				grep '^warp=on' >/dev/null && return 0
 			echo "container $container does not leave through WARP" >&2
 			return 1
 		fi
