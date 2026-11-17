@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Several targets: repeat `-H` (or list them in `GEOKORDON_HOST`, separated by spaces) to run a command on each server in turn, with a header per server; a failure on one does not stop the rest, and the exit code reports it.
+- `allow pull`: print a server's direct list in the format `allow push` takes. It reads the file over plain ssh, without sudo, so the output can go straight into a file.
+
 ## [0.4.0] - 2026-11-17
 
 ### Added

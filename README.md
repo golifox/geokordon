@@ -35,10 +35,18 @@ geokordon allow add example.ru 203.0.113.10
 geokordon allow del 203.0.113.10
 geokordon allow list             # the direct list and what it resolved to
 geokordon allow push servers.txt # replace the direct list with a file
+geokordon allow pull             # print the direct list in the format allow push takes
 geokordon remove                 # everything, WARP and this program included
 ```
 
-On the server run them with `sudo`. From another machine add `-H TARGET` (or set `GEOKORDON_HOST`): `user@host` or any alias from `~/.ssh/config`, with `-p PORT` for another ssh port. The front runs its own copy on the server over one ssh connection; a non-root user goes through `sudo`, which asks for its password when ssh has a terminal, and needs passwordless `sudo` otherwise. Every command but `status` and `remove` also updates the installed copy to the front's version. Not on Linux and without a target, it asks for one.
+On the server run them with `sudo`. From another machine add `-H TARGET` (or set `GEOKORDON_HOST`): `user@host` or any alias from `~/.ssh/config`, with `-p PORT` for another ssh port. Repeat `-H` (or list targets in `GEOKORDON_HOST`, separated by spaces) to run the command on each server in turn; a failure on one does not stop the rest. The front runs its own copy on the server over one ssh connection; a non-root user goes through `sudo`, which asks for its password when ssh has a terminal, and needs passwordless `sudo` otherwise. Every command but `status`, `allow list|pull` and `remove` also updates the installed copy to the front's version. Not on Linux and without a target, it asks for one.
+
+One direct list for several servers: take it from one, edit, push to all.
+
+```bash
+geokordon -H root@vpn1 allow pull >~/.config/geokordon/allow.list
+geokordon -H root@vpn1 -H root@vpn2 allow push ~/.config/geokordon/allow.list
+```
 
 Requirements: Debian or Ubuntu with systemd and Amnezia in Docker on the server; `bash` and `ssh` on your machine.
 

@@ -47,10 +47,38 @@ front_script() {
 		'fi'
 }
 
+# front_each PORT COUNT TARGET... ARGS...: front_run on each target in turn. With several,
+# each output gets a header, a failure does not stop the rest, and the exit code says if any failed.
+front_each() {
+	local port="$1" count="$2" targets=() target failed=""
+	shift 2
+	targets=("${@:1:count}")
+	shift "$count"
+	if [ "$count" = 1 ]; then
+		front_run "${targets[0]}" "$port" "$@"
+		return
+	fi
+	for target in "${targets[@]}"; do
+		echo "=== $target"
+		front_run "$target" "$port" "$@" || failed="$failed $target"
+	done
+	if [ -n "$failed" ]; then
+		echo "failed on:$failed" >&2
+		return 1
+	fi
+}
+
 # front_run TARGET PORT ARGS...: TARGET goes to ssh as is, so aliases from ~/.ssh/config work.
 front_run() {
 	local target="$1" port="$2" ssh_args=() script
 	shift 2
+	if [ "$1 ${2:-}" = "allow pull" ]; then
+		# A plain read of a world-readable file: no sudo, no terminal, so the output keeps LF
+		# line ends and can go straight into a file.
+		# shellcheck disable=SC2029 # The path is quoted here on purpose.
+		ssh -T ${port:+-p "$port"} "$target" "cat $(sh_quote "$ALLOW_FILE")"
+		return
+	fi
 	# Built first: an empty command would open a login shell on the server.
 	script="$(front_script "$@")" || exit 1
 	[ -n "$script" ] || exit 1

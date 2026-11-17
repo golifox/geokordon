@@ -73,20 +73,24 @@ cmd_allow() {
 	local action="$1"
 	shift
 	need_installed
-	if [ "$action" != list ]; then
-		# If the update fails, the list goes back as it was, so later updates keep working.
-		touch "$ALLOW_FILE"
-		cp -p "$ALLOW_FILE" "$ALLOW_FILE.old"
-		trap 'mv -f "$ALLOW_FILE.old" "$ALLOW_FILE"; echo "direct list left as it was" >&2' EXIT
-	fi
 	case "$action" in
-	add) allow_add "$@" ;;
-	del) allow_del "$@" ;;
-	push) allow_push "$1" ;;
 	list)
 		allow_print
 		return
 		;;
+	pull)
+		cat "$ALLOW_FILE" 2>/dev/null || true
+		return
+		;;
+	esac
+	# If the update fails, the list goes back as it was, so later updates keep working.
+	touch "$ALLOW_FILE"
+	cp -p "$ALLOW_FILE" "$ALLOW_FILE.old"
+	trap 'mv -f "$ALLOW_FILE.old" "$ALLOW_FILE"; echo "direct list left as it was" >&2' EXIT
+	case "$action" in
+	add) allow_add "$@" ;;
+	del) allow_del "$@" ;;
+	push) allow_push "$1" ;;
 	esac
 	update_apply >/dev/null
 	trap - EXIT

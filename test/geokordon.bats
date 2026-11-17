@@ -31,7 +31,9 @@ need_nft() {
 	command_valid allow add a.ru 1.2.3.4
 	command_valid allow list
 	command_valid allow push file
+	command_valid allow pull
 	command_valid remove
+	run ! command_valid allow pull file
 	run ! command_valid install --warp
 	run ! command_valid install --with-warp extra
 	run ! command_valid warp
@@ -39,6 +41,38 @@ need_nft() {
 	run ! command_valid allow push
 	run ! command_valid allow sync
 	run ! command_valid bogus
+}
+
+@test "several targets run in turn, a failure does not stop the rest" {
+	front_run() {
+		echo "ran $1 port=$2 args=${*:3}"
+		[ "$1" != bad ]
+	}
+	run front_each 2200 3 a bad c allow add 1.1.1.1
+	[ "$status" = 1 ]
+	[ "${lines[0]}" = "=== a" ]
+	[ "${lines[1]}" = "ran a port=2200 args=allow add 1.1.1.1" ]
+	[ "${lines[4]}" = "=== c" ]
+	[ "${lines[5]}" = "ran c port=2200 args=allow add 1.1.1.1" ]
+	[ "${lines[6]}" = "failed on: bad" ]
+	run front_each "" 1 a status
+	[ "$status" = 0 ]
+	[ "$output" = "ran a port= args=status" ]
+}
+
+@test "GEOKORDON_HOST holds several targets; allow pull takes one" {
+	front_each() { echo "count=$2 targets=$3,$4"; }
+	GEOKORDON_HOST="a b" run main status
+	[ "$output" = "count=2 targets=a,b" ]
+	run main -H a -H b allow pull
+	[ "$status" = 1 ]
+	[[ "$output" == *"allow pull reads one server"* ]]
+}
+
+@test "allow pull reads the list over plain ssh, without sudo" {
+	ssh() { echo "ssh $*"; }
+	run front_run host 2222 allow pull
+	[ "$output" = "ssh -T -p 2222 host cat '$ALLOW_FILE'" ]
 }
 
 @test "no arguments print usage with exit 2, --help exits 0" {

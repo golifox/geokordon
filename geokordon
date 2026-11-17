@@ -43,11 +43,13 @@ Commands:
   allow del ENTRY...     remove them
   allow list             show the direct list and its addresses
   allow push FILE        replace the direct list with FILE
+  allow pull             print the direct list as a file for allow push
   remove                 remove everything, this program included
 
 Options:
-  -H TARGET              run on TARGET over ssh: user@host or an alias from ~/.ssh/config
-                         (default $GEOKORDON_HOST); without it the command runs here
+  -H TARGET              run on TARGET over ssh: user@host or an alias from ~/.ssh/config;
+                         repeat it to run on several servers in turn (default
+                         $GEOKORDON_HOST, space-separated); without it the command runs here
   -p PORT                ssh port
   -h, --help             this help
   --version              print the version
@@ -71,7 +73,7 @@ command_valid() {
 	allow)
 		case "${2:-}" in
 		add | del) [ $# -gt 2 ] ;;
-		list) [ $# = 2 ] ;;
+		list | pull) [ $# = 2 ] ;;
 		push) [ $# = 3 ] ;;
 		*) false ;;
 		esac
@@ -89,7 +91,7 @@ core_run() {
 	export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH"
 	case "$1 ${2:-}" in
 	"warp up" | "warp down" | "warp disable") ;;
-	status*) ;;
+	status* | "allow list" | "allow pull") ;;
 	remove*) lock ;;
 	*)
 		lock
@@ -107,12 +109,12 @@ core_run() {
 }
 
 main() {
-	local target="${GEOKORDON_HOST:-}" port=""
+	local targets=() target port=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		-H)
 			[ $# -ge 2 ] || usage_error
-			target="$2"
+			targets+=("$2")
 			shift 2
 			;;
 		-p)
@@ -133,14 +135,22 @@ main() {
 		esac
 	done
 	if [ $# = 0 ] || ! command_valid "$@"; then usage_error; fi
+	# GEOKORDON_HOST may hold several targets, separated by spaces.
+	if [ ${#targets[@]} = 0 ] && [ -n "${GEOKORDON_HOST:-}" ]; then
+		read -r -a targets <<<"$GEOKORDON_HOST"
+	fi
 
-	if [ -z "$target" ] && [ "$(uname -s)" != Linux ]; then
+	if [ ${#targets[@]} = 0 ] && [ "$(uname -s)" != Linux ]; then
 		[ -t 0 ] || die "No target: pass -H user@host or set GEOKORDON_HOST"
 		read -r -p "Server (user@host or ssh alias): " target
 		[ -n "$target" ] || die "A target is required"
+		targets=("$target")
 	fi
-	if [ -n "$target" ]; then
-		front_run "$target" "$port" "$@"
+	if [ ${#targets[@]} -gt 1 ] && [ "$1 ${2:-}" = "allow pull" ]; then
+		die "allow pull reads one server: pass one -H"
+	fi
+	if [ ${#targets[@]} -gt 0 ]; then
+		front_each "$port" ${#targets[@]} "${targets[@]}" "$@"
 	else
 		core_run "$@"
 	fi
