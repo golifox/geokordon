@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-17
+
+### Added
+
+- `./geokordon install --with-warp | --without-warp`: install or update the geoblock and switch WARP on or off in the same run. Without a flag WARP stays as it is.
+
+### Changed
+
+- Renamed from `amnezia-ru-block` to `geokordon`: the command, the server helpers and units (`geokordon-update`, `geokordon-warp`, `geokordon.timer`), the nftables tables (`inet geokordon`, `ip geokordon_warp`), the files under `/etc` and `/var/lib`, and the `GEOKORDON_ALLOW` variable. A server set up by 0.2.0 keeps the old names: run `./ru-block remove` from 0.2.0 before installing this version.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added
@@ -19,6 +29,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `./ru-block remove`: removes the geoblock and WARP.
 - Interactive login: server IP, SSH port (default 22), user (default root), password or SSH key; non-root users run through sudo, with fix hints when key login or passwordless sudo fails.
 
-[Unreleased]: https://github.com/golifox/amnezia-ru-block/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/golifox/amnezia-ru-block/releases/tag/v0.2.0
-[0.1.0]: https://github.com/golifox/amnezia-ru-block/releases/tag/v0.1.0
+[Unreleased]: https://github.com/golifox/geokordon/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/golifox/geokordon/releases/tag/v0.3.0
+[0.2.0]: https://github.com/golifox/geokordon/releases/tag/v0.2.0
+[0.1.0]: https://github.com/golifox/geokordon/releases/tag/v0.1.0
