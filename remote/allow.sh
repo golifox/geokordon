@@ -11,7 +11,7 @@ allow_install() {
 	fi
 }
 
-# allow_sync (./ru-block allow): replace the list and apply it now.
+# allow_sync (./ru-block allow sync|add|del): replace the list and apply it now.
 allow_sync() {
 	[ -x /usr/local/sbin/ru-block-update ] || {
 		echo "ru-block is not installed: run ./ru-block install first" >&2
@@ -24,6 +24,17 @@ allow_sync() {
 		install -m 755 "$DIR/files/ru-block-warp" /usr/local/sbin/ru-block-warp
 	fi
 	/usr/local/sbin/ru-block-update >/dev/null
+	allow_show
+}
+
+# allow_list (./ru-block allow list): the list as the server has it, and what it resolved to.
+allow_list() {
+	if [ ! -s "$ALLOW_FILE" ]; then
+		echo "Direct list on the server is empty"
+		return
+	fi
+	echo "Direct list on the server:"
+	sed 's/^/  /' "$ALLOW_FILE"
 	allow_show
 }
 

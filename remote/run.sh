@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Entry point on the server, run as root from a temporary copy of remote/:
-#   run.sh SSH_PORT install | remove | warp on|off | allow
+#   run.sh SSH_PORT install | remove | warp on|off | allow sync|list
 # The copy may carry allow.list, the direct list sent by the caller.
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
@@ -29,5 +29,5 @@ case "$1" in
 install) install_ru_block ;;
 remove) remove_ru_block ;;
 warp) "warp_$2" ;;
-allow) allow_sync ;;
+allow) "allow_$2" ;;
 esac

@@ -1,50 +1,67 @@
 #!/usr/bin/env bash
 # Close an Amnezia VPN exit server to Russian IP ranges, optionally route its traffic through WARP.
 #
-# Usage: ./ru-block [install | remove | warp on | warp off | allow]
+# Usage: ./ru-block COMMAND
+#   install               install or update the geoblock (sends allow.list too)
+#   warp on | warp off    route Amnezia traffic through Cloudflare WARP, or back to direct
+#   allow add ENTRY...    add hosts, IPs or subnets to allow.list, then sync
+#   allow del ENTRY...    remove them from allow.list, then sync
+#   allow sync            send allow.list to the server
+#   allow list            show the direct list on the server
+#   remove                remove everything
 # Asks for the server IP, SSH port (default 22), user (default root) and password; an empty
 # password uses SSH keys. A user other than root runs everything through sudo.
 #
-# The direct list (hosts, IPs and subnets that skip the geoblock and WARP) is read from
-# allow.list next to this script, or from $RU_BLOCK_ALLOW; install and allow send it to the server.
+# allow.list (next to this script, or $RU_BLOCK_ALLOW) holds the direct list: entries that
+# skip the geoblock and WARP.
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALLOW_LIST="${RU_BLOCK_ALLOW:-$ROOT/allow.list}"
 source "$ROOT/lib/ssh.sh"
+source "$ROOT/lib/allow.sh"
 
 usage() {
-	echo "Usage: $0 [install | remove | warp on | warp off | allow]" >&2
+	sed -n 's/^#   //p' "$ROOT/ru-block" | sed 's/^/  /' >&2
 	exit 1
 }
 
 case "${1:-install}" in
-install | remove | allow) args=("${1:-install}") ;;
+install | remove) args=("${1:-install}") ;;
 warp)
 	[[ "${2:-}" =~ ^(on|off)$ ]] || usage
 	args=(warp "$2")
 	;;
+allow)
+	case "${2:-}" in
+	sync | list) args=(allow "$2") ;;
+	add | del)
+		[ $# -gt 2 ] || usage
+		allow_check "${@:3}"
+		"allow_local_$2" "${@:3}"
+		args=(allow sync)
+		;;
+	*) usage ;;
+	esac
+	;;
 *) usage ;;
 esac
+
+if [ "${args[*]}" = "allow sync" ] && [ ! -f "$ALLOW_LIST" ]; then
+	echo "No $ALLOW_LIST: copy allow.list.example or use allow add" >&2
+	exit 1
+fi
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 mkdir "$WORK_DIR/remote"
 cp -R "$ROOT/remote/." "$WORK_DIR/remote/"
-
-# allow.list: one host, IP or subnet per line, # starts a comment.
 if [ -f "$ALLOW_LIST" ]; then
-	sed -e 's/#.*//' -e 's/[[:space:]]//g' "$ALLOW_LIST" | awk 'NF' >"$WORK_DIR/remote/allow.list"
-	while read -r entry; do
-		[[ "$entry" =~ ^[0-9A-Za-z.:-]+(/[0-9]{1,3})?$ ]] || {
-			echo "$ALLOW_LIST: not a host, IP or subnet: $entry" >&2
-			exit 1
-		}
-	done <"$WORK_DIR/remote/allow.list"
-elif [ "${args[0]}" = allow ]; then
-	echo "No $ALLOW_LIST: copy allow.list.example and fill it in" >&2
-	exit 1
+	entries=()
+	while IFS= read -r entry; do entries+=("$entry"); done < <(allow_entries)
+	allow_check ${entries[@]+"${entries[@]}"}
+	allow_entries >"$WORK_DIR/remote/allow.list"
 fi
 
 ssh_prompt
