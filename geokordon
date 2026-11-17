@@ -85,6 +85,8 @@ core_run() {
 	need_root
 	# ssh forwards the local locale, which the server may not have.
 	export LANG=C.UTF-8 LC_ALL=C.UTF-8
+	# A root login over ssh without sudo may lack sbin (nft, sshd, sysctl).
+	export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH"
 	case "$1 ${2:-}" in
 	"warp up" | "warp down" | "warp disable") ;;
 	status*) ;;

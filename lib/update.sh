@@ -10,8 +10,11 @@ V6_PREFIX='^[0-9a-f:]+/[0-9]{1,3}$'
 
 # prefix_count FILE REGEX: the number of lines, or nothing when a non-empty line does not match.
 # grep, not awk: Debian's mawk has no {n,m} intervals.
+# Counting, not grep -q: an early exit under pipefail reads as a failure.
 prefix_count() {
-	if ! grep -v '^$' "$1" | grep -qvE "$2"; then
+	local bad
+	bad="$(grep -v '^$' "$1" | grep -cvE "$2" || true)"
+	if [ "$bad" = 0 ]; then
 		grep -cE "$2" "$1" || true
 	fi
 }
@@ -44,15 +47,19 @@ ports_from_bindings() {
 # ports_detect: SSH ports and the published ports of the VPN containers, recounted on every
 # update. PortBindings covers stopped containers too, and Docker lists a range port by port.
 ports_detect() {
-	local container
+	local container names
 	sshd -T 2>/dev/null | awk '$1 == "port" { print "tcp " $2 }' || true
 	ss -Htlnp 2>/dev/null | awk '/"sshd"/ { n = split($4, a, ":"); print "tcp " a[n] }' || true
 	systemctl show -p Listen --value ssh.socket 2>/dev/null |
 		grep -oE ':[0-9]+ \(Stream\)' | sed -E 's/^:([0-9]+).*/tcp \1/' || true
 	if command -v docker >/dev/null; then
-		for container in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "$CONTAINERS"); do
+		# A silent Docker (still starting, restarting) would close the VPN ports: fail instead,
+		# the current rules stay.
+		names="$(docker ps -a --format '{{.Names}}')" || die "Docker does not answer, rules left as they are"
+		for container in $names; do
+			[[ "$container" =~ $CONTAINERS ]] || continue
 			docker inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}} {{.HostPort}}{{"\n"}}{{end}}{{end}}' \
-				"$container" 2>/dev/null
+				"$container" 2>/dev/null || true # removed after the listing
 		done | ports_from_bindings
 	fi
 }
@@ -62,7 +69,8 @@ ports_all() {
 	{
 		sed 's/#.*//' "$PORTS_FILE" 2>/dev/null || true
 		ports_detect
-	} | awk '{ $1 = $1 } 1' | grep -E '^(tcp|udp) [0-9]+$' | sort -u -k1,1 -k2,2n
+	} | awk '($1 == "tcp" || $1 == "udp") && NF == 2 && $2 ~ /^[0-9]+$/ && $2 > 0 && $2 < 65536 { print $1, $2 + 0 }' |
+		sort -u -k1,1 -k2,2n
 }
 
 # rules_generate: the nft script from v4, v6, allow4, allow6, tcp and udp (comma-separated).

@@ -59,12 +59,62 @@ need_nft() {
 			return 1
 		}
 	done
-	for entry in 999.1.1.1 1.2.3 -x.ru a..b 1.2.3.4/33 ::1/129 'a b' 'x;y'; do
+	for entry in :: 1:2:3:4:5:6:7:8 2001:db8::1/64 fe80::; do
+		(allow_check "$entry") || {
+			echo "rejected $entry"
+			return 1
+		}
+	done
+	for entry in 999.1.1.1 1.2.3 -x.ru a..b 1.2.3.4/33 ::1/129 'a b' 'x;y' \
+		: 1:2:3 dead:beef 1::2::3 :1::2 1::2: 1:2:3:4:5:6:7:8:9 12345::1 ::g ::ffff:1.2.3.4; do
 		if (allow_check "$entry" 2>/dev/null); then
 			echo "accepted $entry"
 			return 1
 		fi
 	done
+}
+
+@test "cmd_allow puts the list back when the update fails" {
+	need_installed() { :; }
+	update_apply() { die "generated rules rejected by nft"; }
+	echo 1.1.1.1 >"$ALLOW_FILE"
+	run cmd_allow add 2.2.2.2
+	[ "$status" = 1 ]
+	[[ "$output" == *"direct list left as it was"* ]]
+	[ "$(cat "$ALLOW_FILE")" = 1.1.1.1 ]
+	[ ! -e "$ALLOW_FILE.old" ]
+}
+
+@test "ports_detect fails when docker does not answer" {
+	sshd() { echo 'port 22'; }
+	ss() { :; }
+	systemctl() { :; }
+	docker() { return 1; }
+	run ports_all
+	[ "$status" = 1 ]
+	[[ "$output" == *"Docker does not answer"* ]]
+}
+
+@test "ports_all drops ports out of range and works with none at all" {
+	sshd() { :; }
+	ss() { :; }
+	systemctl() { :; }
+	command() { [ "$2" != docker ] && builtin command "$@"; }
+	printf '%s\n' 'tcp 0' 'udp 65536' 'tcp 65535' >"$PORTS_FILE"
+	run ports_all
+	[ "$status" = 0 ]
+	[ "$output" = 'tcp 65535' ]
+	: >"$PORTS_FILE"
+	run ports_all
+	[ "$status" = 0 ]
+	[ -z "$output" ]
+}
+
+@test "front_run does not call ssh when the script cannot be built" {
+	ssh() { echo called; }
+	run front_run host "" allow push /nonexistent
+	[ "$status" = 1 ]
+	[[ "$output" != *called* ]]
 }
 
 @test "allow_resolve: hex-letter host names resolve, invalid entries are skipped" {

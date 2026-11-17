@@ -8,12 +8,27 @@ ALLOW_FILE=$ETC_DIR/allow
 # name made of hex letters (bbc.de) resolves instead of reaching nft as is.
 IPV4_OCTET='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
 IPV4="^$IPV4_OCTET(\.$IPV4_OCTET){3}(/([0-9]|[12][0-9]|3[0-2]))?$"
-IPV6='^[0-9A-Fa-f.]*:[0-9A-Fa-f:.]*(/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$'
+IPV6_PREFIX='^([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$'
 HOST_LABEL='[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
 HOST="^($HOST_LABEL\.)*$HOST_LABEL$"
 
 allow_is_address() {
-	[[ "$1" =~ $IPV4 || "$1" =~ $IPV6 ]]
+	[[ "$1" =~ $IPV4 ]] || allow_is_ipv6 "$1"
+}
+
+# allow_is_ipv6 ADDR[/PREFIX]: hex groups only (no embedded IPv4): eight groups, or fewer
+# with exactly one ::.
+allow_is_ipv6() {
+	local addr="${1%/*}" part count=0
+	if [[ "$1" == */* ]] && ! [[ "${1##*/}" =~ $IPV6_PREFIX ]]; then return 1; fi
+	[[ "$addr" == *:* && "$addr" =~ ^[0-9A-Fa-f:]+$ && "$addr" != *:::* ]] || return 1
+	[[ "${addr/::/}" != *::* ]] || return 1
+	[[ "$addr" =~ ^:[^:] || "$addr" =~ [^:]:$ ]] && return 1
+	for part in ${addr//:/ }; do
+		[[ "$part" =~ ^[0-9A-Fa-f]{1,4}$ ]] || return 1
+		count=$((count + 1))
+	done
+	if [[ "$addr" == *::* ]]; then [ "$count" -le 7 ]; else [ "$count" = 8 ]; fi
 }
 
 allow_is_host() {
@@ -38,12 +53,16 @@ allow_entries() {
 
 # allow_resolve: one address per line; host names through getent, invalid entries skipped.
 allow_resolve() {
-	local entry
+	local entry resolved
 	while IFS= read -r entry; do
 		if allow_is_address "$entry"; then
 			echo "$entry"
 		elif allow_is_host "$entry"; then
-			getent ahosts "$entry" | awk '{ print $1 }' || echo "cannot resolve $entry" >&2
+			if resolved="$(getent ahosts "$entry")"; then
+				awk '{ print $1 }' <<<"$resolved"
+			else
+				echo "cannot resolve $entry" >&2
+			fi
 		else
 			echo "skipped, not a host, IP or subnet: $entry" >&2
 		fi
@@ -54,6 +73,12 @@ cmd_allow() {
 	local action="$1"
 	shift
 	need_installed
+	if [ "$action" != list ]; then
+		# If the update fails, the list goes back as it was, so later updates keep working.
+		touch "$ALLOW_FILE"
+		cp -p "$ALLOW_FILE" "$ALLOW_FILE.old"
+		trap 'mv -f "$ALLOW_FILE.old" "$ALLOW_FILE"; echo "direct list left as it was" >&2' EXIT
+	fi
 	case "$action" in
 	add) allow_add "$@" ;;
 	del) allow_del "$@" ;;
@@ -64,6 +89,8 @@ cmd_allow() {
 		;;
 	esac
 	update_apply >/dev/null
+	trap - EXIT
+	rm -f "$ALLOW_FILE.old"
 	allow_show
 }
 
@@ -71,7 +98,7 @@ allow_add() {
 	local entry
 	allow_check "$@"
 	for entry in "$@"; do
-		if allow_entries | grep -qxF "$entry"; then
+		if allow_entries | grep -xF "$entry" >/dev/null; then
 			echo "already listed: $entry"
 		else
 			echo "$entry" >>"$ALLOW_FILE"
@@ -83,7 +110,7 @@ allow_add() {
 allow_del() {
 	local entry
 	for entry in "$@"; do
-		if allow_entries | grep -qxF "$entry"; then
+		if allow_entries | grep -xF "$entry" >/dev/null; then
 			echo "removed: $entry"
 		else
 			echo "not listed: $entry"
