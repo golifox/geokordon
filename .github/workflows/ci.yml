@@ -52,7 +52,7 @@ jobs:
       - name: config
         run: |
           sudo geokordon config containers '^(amnezia|xray)'
-          sudo geokordon status | grep 'udp 42000' >/dev/null
+          sudo gk status | grep "udp 42000" >/dev/null
           sudo geokordon config countries ru,by
           sudo geokordon status | grep 'Blocked countries: ru,by' >/dev/null
       - name: direct list
@@ -70,7 +70,7 @@ jobs:
         run: |
           sudo geokordon remove
           if sudo nft list table inet geokordon 2>/dev/null; then exit 1; fi
-          test ! -e /usr/local/sbin/geokordon
+          test ! -e /usr/local/sbin/geokordon && test ! -e /usr/local/sbin/gk
           test ! -e /etc/geokordon
 
   smoke-rocky:

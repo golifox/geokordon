@@ -48,6 +48,47 @@ setup() {
 	[ "$status" = 1 ]
 }
 
+@test "config_load falls back to the defaults on hand-edited garbage" {
+	printf '%s\n' 'countries=,' 'containers=-x' >"$CONFIG_FILE"
+	run config_load
+	[[ "$output" == *"bad countries=,"* && "$output" == *"bad containers=-x"* ]]
+	config_load 2>/dev/null
+	[ "$COUNTRIES" = ru ] && [ "$CONTAINERS" = '^amnezia' ]
+}
+
+@test "config containers refuses a pattern no container matches" {
+	need_installed() { :; }
+	docker() { printf '%s\n' amnezia-awg2 amnezia-xray; }
+	update_apply() { :; }
+	run cmd_config containers '^amnezai'
+	[ "$status" = 1 ]
+	[[ "$output" == *"No container matches ^amnezai; containers here: amnezia-awg2 amnezia-xray"* ]]
+	[ ! -e "$CONFIG_FILE" ]
+	run cmd_config containers '^(amnezia|xray)'
+	[ "$status" = 0 ]
+}
+
+@test "the gk alias: created, kept off a foreign file, removed only when ours" {
+	BIN="$BATS_TEST_TMPDIR/sbin/geokordon"
+	mkdir -p "$(dirname "$BIN")"
+	touch "$BIN"
+	alias_install
+	[ "$(readlink "$BATS_TEST_TMPDIR/sbin/gk")" = geokordon ]
+	alias_remove
+	[ ! -e "$BATS_TEST_TMPDIR/sbin/gk" ]
+	echo other >"$BATS_TEST_TMPDIR/sbin/gk"
+	run alias_install
+	[[ "$output" == *"belongs to something else"* ]]
+	alias_remove
+	[ "$(cat "$BATS_TEST_TMPDIR/sbin/gk")" = other ]
+}
+
+@test "from sources through a symlink, like a gk link to the checkout" {
+	ln -s "$BATS_TEST_DIRNAME/../geokordon" "$BATS_TEST_TMPDIR/gk"
+	run "$BATS_TEST_TMPDIR/gk" --version
+	[ "$output" = "geokordon $GEOKORDON_VERSION" ]
+}
+
 @test "cmd_config puts the config back when the update fails" {
 	need_installed() { :; }
 	update_apply() { die "no IPv4 list for xx, nothing applied"; }

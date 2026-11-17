@@ -104,7 +104,7 @@ warp_cancel_rollback() {
 # warp_subnets: subnets of the Docker networks the VPN containers are attached to.
 warp_subnets() {
 	local container network
-	for container in $(docker ps -a --format '{{.Names}}' | grep -E "$CONTAINERS"); do
+	for container in $(docker ps -a --format '{{.Names}}' | grep -E -- "$CONTAINERS"); do
 		docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' "$container"
 	done | awk 'NF && $0 != "host" && $0 != "none"' | sort -u | while read -r network; do
 		docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' "$network"
@@ -229,7 +229,7 @@ warp_host_trace() {
 # 2 when no VPN container has a tool to check with.
 warp_container_check() {
 	local container
-	for container in $(docker ps --format '{{.Names}}' | grep -E "$CONTAINERS"); do
+	for container in $(docker ps --format '{{.Names}}' | grep -E -- "$CONTAINERS"); do
 		if docker exec "$container" sh -c 'command -v wget || command -v curl' >/dev/null 2>&1; then
 			docker exec "$container" sh -c \
 				"wget -qO- -T 10 $TRACE_URL 2>/dev/null || curl -fsS -m 10 $TRACE_URL" 2>/dev/null |

@@ -29,10 +29,29 @@ self_install() {
 	self_bundle >"$BIN.new"
 	chmod 755 "$BIN.new"
 	mv "$BIN.new" "$BIN"
+	alias_install
 	for unit in "${UNITS[@]}"; do unit_text "$unit" >"$UNIT_DIR/$unit"; done
 	# The WARP unit exists only once WARP was set up.
 	if [ -f "$WARP_UNIT" ]; then unit_text geokordon-warp.service >"$WARP_UNIT"; fi
 	systemctl daemon-reload
+}
+
+# alias_install: the short name gk, unless something else already owns it.
+alias_install() {
+	local alias_path
+	alias_path="$(dirname "$BIN")/gk"
+	if [ -L "$alias_path" ] || [ ! -e "$alias_path" ]; then
+		ln -sfn geokordon "$alias_path"
+	elif ! [ "$alias_path" -ef "$BIN" ]; then
+		echo "note: $alias_path belongs to something else, no gk alias" >&2
+	fi
+}
+
+# alias_remove: drop gk only when it points to this program.
+alias_remove() {
+	local alias_path
+	alias_path="$(dirname "$BIN")/gk"
+	if [ -L "$alias_path" ] && [ "$(readlink "$alias_path")" = geokordon ]; then rm -f "$alias_path"; fi
 }
 
 # self_sync: run from elsewhere (the front's copy), refresh an installed copy of another version.

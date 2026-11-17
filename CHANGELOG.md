@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `geokordon config countries ru,by`: block any countries ipdeny.com lists, not only Russia.
 - `geokordon config containers '^(amnezia|3x-ui)'`: the VPN containers by a name pattern, so 3x-ui, Marzban, plain WireGuard and others get their ports opened and their traffic routed through WARP.
 - `config` without arguments shows the settings. A setting is checked, saved to `/etc/geokordon/config` and applied at once; if applying fails, it goes back as it was.
+- `gk`, the short name: `install` links `/usr/local/sbin/gk` to `geokordon` unless the name is taken, `remove` drops it. Run from a checkout, `geokordon` also works through a symlink, so `ln -s "$PWD/geokordon" ~/.local/bin/gk` gives the same on your machine.
 - The RHEL family: packages through dnf on Rocky, Alma, RHEL and Fedora. CI runs the tests on Rocky 9 too, and a full install–config–remove run with systemd and firewalld.
 
 ### Changed
@@ -16,6 +17,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - The nft sets are `geo4`/`geo6` instead of `ru4`/`ru6`; `status` shows the blocked countries and the container pattern.
 - The download check no longer needs 1000 IPv4 / 200 IPv6 prefixes, which small countries never reach: every line must be a prefix, there must be at least half as many as cached, and at least 10 IPv4 prefixes on a country's first download.
 - Descriptions speak of a VPN server in Docker; Amnezia stays the default.
+- Range downloads retry on every error over HTTP/1.1: ipdeny.com drops TLS connections and HTTP/2 streams now and then, and plain `--retry` let a single drop fail the update.
+- `config containers` refuses a pattern that matches none of the containers, and a hand-edited setting that would not pass the check falls back to the default with a warning, so a typo cannot close the VPN ports or empty the geoblock. A WARP refresh failure after the rules are applied only warns.
 
 ## [0.5.0] - 2026-11-17
 

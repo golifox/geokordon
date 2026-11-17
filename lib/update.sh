@@ -25,7 +25,9 @@ prefix_count() {
 # truncated or altered answer must not narrow the block silently.
 prefix_fetch() {
 	local url="$1" file="$2" re="$3" min="$4" count old=0
-	if ! curl -fsS --retry 5 --retry-connrefused --retry-delay 5 -m 120 "$url" -o "$file.new"; then
+	# ipdeny.com drops connections now and then (TLS EOF, broken HTTP/2 streams), which plain
+	# --retry does not cover: retry on every error, over HTTP/1.1.
+	if ! curl -fsS --http1.1 --retry 5 --retry-all-errors --retry-delay 5 -m 120 "$url" -o "$file.new"; then
 		rm -f "$file.new"
 		echo "download failed: $url (using cached list if any)" >&2
 		return 0
@@ -137,6 +139,7 @@ update_apply() {
 		zones4+=("$CACHE/${cc}4.zone")
 		if [ -s "$CACHE/${cc}6.zone" ]; then zones6+=("$CACHE/${cc}6.zone"); fi
 	done
+	[ ${#zones4[@]} -gt 0 ] || die "no countries to block, nothing applied"
 	v4="$(awk 'NF' "${zones4[@]}" | paste -sd, -)"
 	v6=""
 	if [ ${#zones6[@]} -gt 0 ]; then v6="$(awk 'NF' "${zones6[@]}" | paste -sd, -)"; fi
@@ -158,9 +161,12 @@ update_apply() {
 	mv "$CACHE/allow.resolved.new" "$CACHE/allow.resolved"
 	mv "$CACHE/ports.new" "$CACHE/ports"
 	nft -f "$NFT_FILE"
-	# WARP keeps the direct list out of its marks; rebuild it with the fresh addresses.
+	# WARP keeps the direct list out of its marks; rebuild it with the fresh addresses. The
+	# geoblock is applied by now, so a WARP failure only warns: failing here would roll back
+	# a config or direct list the table already carries. A process of its own, as set -e does
+	# not hold inside `||`.
 	if systemctl is-active --quiet geokordon-warp.service; then
-		warp_up
+		bash "$GEOKORDON_SELF" warp up || echo "warning: WARP routing not refreshed, see geokordon warp on" >&2
 	fi
 	echo "geokordon applied: blocked $COUNTRIES, open to them tcp {$tcp} udp {$udp}"
 }

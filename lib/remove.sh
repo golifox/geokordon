@@ -13,6 +13,7 @@ cmd_remove() {
 	systemctl disable geokordon-restore.service 2>/dev/null || true
 	nft delete table inet geokordon 2>/dev/null || true
 	for unit in "${UNITS[@]}"; do rm -f "${UNIT_DIR:?}/$unit"; done
+	alias_remove
 	rm -f "$BIN"
 	rm -rf "${ETC_DIR:?}" "${CACHE:?}"
 	systemctl daemon-reload
