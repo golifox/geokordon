@@ -1,78 +1,150 @@
 #!/usr/bin/env bash
-# Close an Amnezia VPN exit server to Russian IP ranges, optionally route its traffic through WARP.
-#
-# Usage: ./geokordon COMMAND
-#   install [--with-warp | --without-warp]
-#                         install or update the geoblock (sends allow.list too), then switch
-#                         WARP on or off; without a flag WARP stays as it is
-#   warp on | warp off    route Amnezia traffic through Cloudflare WARP, or back to direct
-#   allow add ENTRY...    add hosts, IPs or subnets to allow.list, then sync
-#   allow del ENTRY...    remove them from allow.list, then sync
-#   allow sync            send allow.list to the server
-#   allow list            show the direct list on the server
-#   remove                remove everything
-# Asks for the server IP, SSH port (default 22), user (default root) and password; an empty
-# password uses SSH keys. A user other than root runs everything through sudo.
-#
-# allow.list (next to this script, or $GEOKORDON_ALLOW) holds the direct list: entries that
-# skip the geoblock and WARP.
-# shellcheck source-path=SCRIPTDIR
+# geokordon: close a VPN exit server to Russian IP ranges, optionally route its containers
+# through Cloudflare WARP. One file is both the server program and the front: with a
+# target it runs itself on that server over ssh.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALLOW_LIST="${GEOKORDON_ALLOW:-$ROOT/allow.list}"
-source "$ROOT/lib/ssh.sh"
-source "$ROOT/lib/allow.sh"
+GEOKORDON_VERSION=0.4.0
+GEOKORDON_SELF="${BASH_SOURCE[0]}"
+
+# >>> sources: scripts/build puts the modules and units here.
+GEOKORDON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$GEOKORDON_ROOT/lib/common.sh"
+# shellcheck source=lib/allow.sh
+source "$GEOKORDON_ROOT/lib/allow.sh"
+# shellcheck source=lib/update.sh
+source "$GEOKORDON_ROOT/lib/update.sh"
+# shellcheck source=lib/warp.sh
+source "$GEOKORDON_ROOT/lib/warp.sh"
+# shellcheck source=lib/install.sh
+source "$GEOKORDON_ROOT/lib/install.sh"
+# shellcheck source=lib/status.sh
+source "$GEOKORDON_ROOT/lib/status.sh"
+# shellcheck source=lib/remove.sh
+source "$GEOKORDON_ROOT/lib/remove.sh"
+# shellcheck source=lib/front.sh
+source "$GEOKORDON_ROOT/lib/front.sh"
+unit_text() { cat "$GEOKORDON_ROOT/units/$1"; }
+# <<< sources
 
 usage() {
-	sed -n 's/^#   //p' "$ROOT/geokordon" | sed 's/^/  /' >&2
-	exit 1
+	cat <<'EOF'
+Usage: geokordon [-H TARGET] [-p PORT] COMMAND
+
+Commands:
+  install [--with-warp | --without-warp]
+                         install or update; then switch WARP on or off (without a flag
+                         WARP stays as it is)
+  update                 download the RU ranges and apply the rules now
+  status                 what is installed and applied
+  warp on | warp off     route the VPN containers through Cloudflare WARP, or back to direct
+  allow add ENTRY...     add hosts, IPs or subnets to the direct list (no geoblock, no WARP)
+  allow del ENTRY...     remove them
+  allow list             show the direct list and its addresses
+  allow push FILE        replace the direct list with FILE
+  remove                 remove everything, this program included
+
+Options:
+  -H TARGET              run on TARGET over ssh: user@host or an alias from ~/.ssh/config
+                         (default $GEOKORDON_HOST); without it the command runs here
+  -p PORT                ssh port
+  -h, --help             this help
+  --version              print the version
+
+On Linux the command runs locally as root. Elsewhere without a target it asks for one.
+EOF
 }
 
-case "${1:-install}" in
-install)
-	args=(install)
-	if [ $# -gt 1 ]; then
-		[[ "$2" =~ ^--with(out)?-warp$ ]] || usage
-		args+=("$2")
-	fi
-	;;
-remove) args=(remove) ;;
-warp)
-	[[ "${2:-}" =~ ^(on|off)$ ]] || usage
-	args=(warp "$2")
-	;;
-allow)
-	case "${2:-}" in
-	sync | list) args=(allow "$2") ;;
-	add | del)
-		[ $# -gt 2 ] || usage
-		allow_check "${@:3}"
-		"allow_local_$2" "${@:3}"
-		args=(allow sync)
+usage_error() {
+	usage >&2
+	exit 2
+}
+
+# command_valid ARGS...: the command line is one of usage.
+command_valid() {
+	case "$1" in
+	install) [ $# = 1 ] || { [ $# = 2 ] && [[ "$2" =~ ^--with(out)?-warp$ ]]; } ;;
+	update | status | remove) [ $# = 1 ] ;;
+	# up, down and disable are for geokordon-warp.service and the rollback timer.
+	warp) [ $# = 2 ] && [[ "$2" =~ ^(on|off|up|down|disable)$ ]] ;;
+	allow)
+		case "${2:-}" in
+		add | del) [ $# -gt 2 ] ;;
+		list) [ $# = 2 ] ;;
+		push) [ $# = 3 ] ;;
+		*) false ;;
+		esac
 		;;
-	*) usage ;;
+	*) false ;;
 	esac
-	;;
-*) usage ;;
-esac
+}
 
-if [ "${args[*]}" = "allow sync" ] && [ ! -f "$ALLOW_LIST" ]; then
-	echo "No $ALLOW_LIST: copy allow.list.example or use allow add" >&2
-	exit 1
+# core_run ARGS...: the command on this machine, as root.
+core_run() {
+	need_root
+	# ssh forwards the local locale, which the server may not have.
+	export LANG=C.UTF-8 LC_ALL=C.UTF-8
+	case "$1 ${2:-}" in
+	"warp up" | "warp down" | "warp disable") ;;
+	status*) ;;
+	remove*) lock ;;
+	*)
+		lock
+		self_sync
+		;;
+	esac
+	case "$1" in
+	install) cmd_install "${2:-}" ;;
+	update) cmd_update ;;
+	status) cmd_status ;;
+	warp) cmd_warp "$2" ;;
+	allow) cmd_allow "${@:2}" ;;
+	remove) cmd_remove ;;
+	esac
+}
+
+main() {
+	local target="${GEOKORDON_HOST:-}" port=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		-H)
+			[ $# -ge 2 ] || usage_error
+			target="$2"
+			shift 2
+			;;
+		-p)
+			[[ "${2:-}" =~ ^[0-9]+$ ]] || usage_error
+			port="$2"
+			shift 2
+			;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		--version)
+			echo "geokordon $GEOKORDON_VERSION"
+			exit 0
+			;;
+		-*) usage_error ;;
+		*) break ;;
+		esac
+	done
+	if [ $# = 0 ] || ! command_valid "$@"; then usage_error; fi
+
+	if [ -z "$target" ] && [ "$(uname -s)" != Linux ]; then
+		[ -t 0 ] || die "No target: pass -H user@host or set GEOKORDON_HOST"
+		read -r -p "Server (user@host or ssh alias): " target
+		[ -n "$target" ] || die "A target is required"
+	fi
+	if [ -n "$target" ]; then
+		front_run "$target" "$port" "$@"
+	else
+		core_run "$@"
+	fi
+}
+
+# Sourced by the tests: functions only.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+	main "$@"
 fi
-
-WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
-mkdir "$WORK_DIR/remote"
-cp -R "$ROOT/remote/." "$WORK_DIR/remote/"
-if [ -f "$ALLOW_LIST" ]; then
-	entries=()
-	while IFS= read -r entry; do entries+=("$entry"); done < <(allow_entries)
-	allow_check ${entries[@]+"${entries[@]}"}
-	allow_entries >"$WORK_DIR/remote/allow.list"
-fi
-
-ssh_prompt
-ssh_prepare
-ssh_run_remote "$WORK_DIR/remote" "${args[@]}"

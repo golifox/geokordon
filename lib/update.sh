@@ -1,0 +1,151 @@
+# shellcheck shell=bash
+# update: rebuild the nftables table geokordon. RU sources reach only SSH and the container
+# ports; forwarded connections to RU destinations are rejected.
+
+PORTS_FILE=$ETC_DIR/ports
+NFT_FILE=$CACHE/geokordon.nft
+CONTAINERS='^amnezia'
+V4_PREFIX='^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$'
+V6_PREFIX='^[0-9a-f:]+/[0-9]{1,3}$'
+
+# prefix_count FILE REGEX: the number of lines, or nothing when a non-empty line does not match.
+# grep, not awk: Debian's mawk has no {n,m} intervals.
+prefix_count() {
+	if ! grep -v '^$' "$1" | grep -qvE "$2"; then
+		grep -cE "$2" "$1" || true
+	fi
+}
+
+# prefix_fetch URL FILE REGEX MIN: replace FILE with the download only when every line is a
+# prefix and there are at least MIN of them and at least half of the cached count: a
+# truncated or altered answer must not narrow the block silently.
+prefix_fetch() {
+	local url="$1" file="$2" re="$3" min="$4" count old=0
+	if ! curl -fsS --retry 5 --retry-connrefused --retry-delay 5 -m 120 "$url" -o "$file.new"; then
+		rm -f "$file.new"
+		echo "download failed: $url (using cached list if any)" >&2
+		return 0
+	fi
+	count="$(prefix_count "$file.new" "$re")"
+	if [ -f "$file" ]; then old="$(prefix_count "$file" "$re")"; fi
+	if [ -n "$count" ] && [ "$count" -ge "$min" ] && [ $((count * 2)) -ge "${old:-0}" ]; then
+		mv "$file.new" "$file"
+	else
+		rm -f "$file.new"
+		echo "rejected $url: ${count:-malformed} prefixes, need $min and half of the cached ${old:-0} (using cached list if any)" >&2
+	fi
+}
+
+# ports_from_bindings: "51820/udp 51820" lines of docker inspect to "udp 51820".
+ports_from_bindings() {
+	awk '$2 ~ /^[0-9]+$/ { split($1, a, "/"); print a[2] " " $2 }'
+}
+
+# ports_detect: SSH ports and the published ports of the VPN containers, recounted on every
+# update. PortBindings covers stopped containers too, and Docker lists a range port by port.
+ports_detect() {
+	local container
+	sshd -T 2>/dev/null | awk '$1 == "port" { print "tcp " $2 }' || true
+	ss -Htlnp 2>/dev/null | awk '/"sshd"/ { n = split($4, a, ":"); print "tcp " a[n] }' || true
+	systemctl show -p Listen --value ssh.socket 2>/dev/null |
+		grep -oE ':[0-9]+ \(Stream\)' | sed -E 's/^:([0-9]+).*/tcp \1/' || true
+	if command -v docker >/dev/null; then
+		for container in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "$CONTAINERS"); do
+			docker inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}} {{.HostPort}}{{"\n"}}{{end}}{{end}}' \
+				"$container" 2>/dev/null
+		done | ports_from_bindings
+	fi
+}
+
+# ports_all: the ports open for RU sources, from ports_detect and PORTS_FILE.
+ports_all() {
+	{
+		sed 's/#.*//' "$PORTS_FILE" 2>/dev/null || true
+		ports_detect
+	} | awk '{ $1 = $1 } 1' | grep -E '^(tcp|udp) [0-9]+$' | sort -u -k1,1 -k2,2n
+}
+
+# rules_generate: the nft script from v4, v6, allow4, allow6, tcp and udp (comma-separated).
+rules_generate() {
+	echo "table inet geokordon"
+	echo "delete table inet geokordon"
+	echo "table inet geokordon {"
+	echo "  set ru4 { type ipv4_addr; flags interval; auto-merge; elements = { $v4 } }"
+	if [ -n "$v6" ]; then
+		echo "  set ru6 { type ipv6_addr; flags interval; auto-merge; elements = { $v6 } }"
+	fi
+	if [ -n "$allow4" ]; then
+		echo "  set allow4 { type ipv4_addr; flags interval; auto-merge; elements = { $allow4 } }"
+	fi
+	if [ -n "$allow6" ]; then
+		echo "  set allow6 { type ipv6_addr; flags interval; auto-merge; elements = { $allow6 } }"
+	fi
+	echo "  chain prerouting {"
+	# Before Docker DNAT, so published container ports are covered too.
+	echo "    type filter hook prerouting priority -150; policy accept;"
+	echo "    ct state established,related accept"
+	echo "    iifname \"lo\" accept"
+	if [ -n "$allow4" ]; then echo "    ip saddr @allow4 accept"; fi
+	if [ -n "$allow6" ]; then echo "    ip6 saddr @allow6 accept"; fi
+	if [ -n "$tcp" ]; then echo "    tcp dport { $tcp } accept"; fi
+	if [ -n "$udp" ]; then echo "    udp dport { $udp } accept"; fi
+	echo "    ip saddr @ru4 drop"
+	if [ -n "$v6" ]; then echo "    ip6 saddr @ru6 drop"; fi
+	echo "  }"
+	echo "  chain forward {"
+	# VPN clients must not reach RU destinations through this server.
+	# Only connections initiated towards RU; replies to RU clients stay allowed.
+	# TCP gets a reset: macOS and other BSD stacks ignore ICMP unreachable while connecting
+	# and would hang until timeout.
+	echo "    type filter hook forward priority -10; policy accept;"
+	if [ -n "$allow4" ]; then echo "    ip daddr @allow4 accept"; fi
+	if [ -n "$allow6" ]; then echo "    ip6 daddr @allow6 accept"; fi
+	echo "    ct direction original ip daddr @ru4 meta l4proto tcp reject with tcp reset"
+	echo "    ct direction original ip daddr @ru4 reject"
+	if [ -n "$v6" ]; then
+		echo "    ct direction original ip6 daddr @ru6 meta l4proto tcp reject with tcp reset"
+		echo "    ct direction original ip6 daddr @ru6 reject"
+	fi
+	echo "  }"
+	echo "}"
+}
+
+cmd_update() {
+	need_installed
+	update_apply
+}
+
+# update_apply: download, generate, check with nft -c, then replace the cache and the table.
+# geokordon-restore.service loads the cached file on boot, so only a checked one lands there.
+update_apply() {
+	local v4 v6 allow4 allow6 tcp udp
+	mkdir -p "$CACHE"
+	prefix_fetch https://www.ipdeny.com/ipblocks/data/aggregated/ru-aggregated.zone "$CACHE/ru4.zone" "$V4_PREFIX" 1000
+	prefix_fetch https://www.ipdeny.com/ipv6/ipaddresses/aggregated/ru-aggregated.zone "$CACHE/ru6.zone" "$V6_PREFIX" 200
+	[ -s "$CACHE/ru4.zone" ] || die "no RU IPv4 list, nothing applied"
+	v4="$(awk 'NF' "$CACHE/ru4.zone" | paste -sd, -)"
+	v6="$(awk 'NF' "$CACHE/ru6.zone" 2>/dev/null | paste -sd, - || true)"
+
+	allow_resolve | sort -u >"$CACHE/allow.resolved.new"
+	allow4="$(awk '/^[0-9.]+(\/[0-9]+)?$/' "$CACHE/allow.resolved.new" | paste -sd, -)"
+	allow6="$(awk '/:/' "$CACHE/allow.resolved.new" | paste -sd, -)"
+
+	ports_all >"$CACHE/ports.new"
+	tcp="$(awk '$1 == "tcp" { print $2 }' "$CACHE/ports.new" | paste -sd, -)"
+	udp="$(awk '$1 == "udp" { print $2 }' "$CACHE/ports.new" | paste -sd, -)"
+
+	rules_generate >"$NFT_FILE.new"
+	nft -c -f "$NFT_FILE.new" || {
+		rm -f "$NFT_FILE.new" "$CACHE/allow.resolved.new" "$CACHE/ports.new"
+		die "generated rules rejected by nft, the current ones stay"
+	}
+	mv "$NFT_FILE.new" "$NFT_FILE"
+	mv "$CACHE/allow.resolved.new" "$CACHE/allow.resolved"
+	mv "$CACHE/ports.new" "$CACHE/ports"
+	nft -f "$NFT_FILE"
+	# WARP keeps the direct list out of its marks; rebuild it with the fresh addresses.
+	if systemctl is-active --quiet geokordon-warp.service; then
+		warp_up
+	fi
+	echo "geokordon applied: open for RU -> tcp {$tcp} udp {$udp}"
+}
