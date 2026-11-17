@@ -2,5 +2,5 @@
 shellcheck = "0.11.0"
 
 [tasks.lint]
-description = "shellcheck the script"
-run = "shellcheck ru-block"
+description = "shellcheck every script"
+run = "shellcheck -x ru-block lib/*.sh remote/*.sh remote/files/ru-block-update remote/files/ru-block-warp"

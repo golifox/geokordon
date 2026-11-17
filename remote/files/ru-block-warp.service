@@ -1,0 +1,13 @@
+[Unit]
+Description=Route Amnezia containers through WARP
+BindsTo=wg-quick@warp.service
+After=wg-quick@warp.service docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ru-block-warp up
+ExecStop=/usr/local/sbin/ru-block-warp down
+
+[Install]
+WantedBy=wg-quick@warp.service
