@@ -17,14 +17,14 @@ jobs:
 
   test:
     # Root, nft and NET_ADMIN, so the nft -c and migration tests run too.
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12", "rockylinux:9"]
     runs-on: ubuntu-24.04
-    container:
-      image: debian:12
-      options: --cap-add NET_ADMIN
     steps:
       - uses: actions/checkout@v4
-      - run: apt-get update -qq && apt-get install -y -qq bats nftables gzip
-      - run: bats test
+      - run: docker run --rm --cap-add NET_ADMIN -v "$PWD:/src:ro" ${{ matrix.image }} bash /src/test/container.sh
 
   smoke:
     strategy:
@@ -35,21 +35,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: scripts/build
-      - name: A VPN container with a published UDP port
-        run: docker run -d --name amnezia-ci -p 41000:41000/udp alpine:3.20 sleep infinity
+      - name: VPN containers with published UDP ports
+        run: |
+          docker run -d --name amnezia-ci -p 41000:41000/udp alpine:3.20 sleep infinity
+          docker run -d --name xray-ci -p 42000:42000/udp alpine:3.20 sleep infinity
       - run: sudo dist/geokordon install
+      # grep >/dev/null, not grep -q: the runner's bash has pipefail, and an early exit of
+      # grep -q fails the pipeline.
       - name: status
         run: |
           sudo geokordon status | tee status.txt
-          grep -q 'Geoblock: on' status.txt
-          grep -q 'udp 41000' status.txt
+          grep 'Geoblock: on' status.txt >/dev/null
+          grep 'udp 41000' status.txt >/dev/null
+          if grep 'udp 42000' status.txt; then exit 1; fi
           systemctl is-enabled geokordon-restore.service geokordon.timer
+      - name: config
+        run: |
+          sudo geokordon config containers '^(amnezia|xray)'
+          sudo geokordon status | grep 'udp 42000' >/dev/null
+          sudo geokordon config countries ru,by
+          sudo geokordon status | grep 'Blocked countries: ru,by' >/dev/null
       - name: direct list
         run: |
           sudo geokordon allow add 1.1.1.1 one.one.one.one
-          sudo geokordon allow list | grep -q 1.0.0.1
+          sudo geokordon allow list | grep 1.0.0.1 >/dev/null
           sudo geokordon allow del one.one.one.one
-          sudo nft list set inet geokordon allow4 | grep -q 1.1.1.1
+          sudo nft list set inet geokordon allow4 | grep 1.1.1.1 >/dev/null
       - name: boot restore
         run: |
           sudo nft delete table inet geokordon
@@ -61,3 +72,9 @@ jobs:
           if sudo nft list table inet geokordon 2>/dev/null; then exit 1; fi
           test ! -e /usr/local/sbin/geokordon
           test ! -e /etc/geokordon
+
+  smoke-rocky:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: test/smoke-rocky.sh

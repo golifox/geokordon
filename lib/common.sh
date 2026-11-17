@@ -27,15 +27,26 @@ lock() {
 	flock 9
 }
 
-# need_packages PACKAGE...: install the missing Debian/Ubuntu packages.
+# need_packages PACKAGE...: install the missing packages with apt (Debian, Ubuntu) or dnf
+# (Rocky, Alma, RHEL, Fedora); the names are the same on both.
 need_packages() {
 	local missing=() package
-	for package in "$@"; do
-		dpkg -s "$package" >/dev/null 2>&1 || missing+=("$package")
-	done
-	if [ ${#missing[@]} -gt 0 ]; then
+	if command -v apt-get >/dev/null; then
+		for package in "$@"; do
+			dpkg -s "$package" >/dev/null 2>&1 || missing+=("$package")
+		done
+		[ ${#missing[@]} -gt 0 ] || return 0
 		apt-get update -qq
 		DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq "${missing[@]}" >/dev/null
+	elif command -v dnf >/dev/null; then
+		for package in "$@"; do
+			# --whatprovides: RHEL ships curl as curl-minimal, which conflicts with curl.
+			rpm -q --whatprovides "$package" >/dev/null 2>&1 || missing+=("$package")
+		done
+		[ ${#missing[@]} -gt 0 ] || return 0
+		dnf install -y -q "${missing[@]}" >/dev/null
+	else
+		die "Neither apt-get nor dnf found: install $* by hand, then run again"
 	fi
 }
 

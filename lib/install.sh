@@ -12,7 +12,7 @@ cmd_install() {
 	systemctl enable --now geokordon.timer >/dev/null 2>&1
 	# Not started now: the table is already loaded; it loads the cache on the next boot.
 	systemctl enable geokordon-restore.service >/dev/null 2>&1
-	echo "IPv4 ranges loaded: $(grep -c . "$CACHE/ru4.zone")"
+	echo "Blocked countries: $COUNTRIES, $(geo_ranges) IPv4 ranges"
 	allow_show
 
 	# Without a flag WARP stays as it is, so a rerun to update never flips it.

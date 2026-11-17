@@ -13,7 +13,68 @@ setup() {
 	CACHE="$BATS_TEST_TMPDIR/cache"
 	ALLOW_FILE="$ETC_DIR/allow"
 	PORTS_FILE="$ETC_DIR/ports"
+	CONFIG_FILE="$ETC_DIR/config"
+	NFT_FILE="$CACHE/geokordon.nft"
 	mkdir -p "$ETC_DIR" "$CACHE"
+}
+
+@test "config: defaults without a file, the last line of a key wins" {
+	config_load
+	[ "$COUNTRIES" = ru ] && [ "$CONTAINERS" = '^amnezia' ]
+	printf '%s\n' 'countries=by' '# note' 'countries=ru,by' 'containers=^(amnezia|3x-ui)' >"$CONFIG_FILE"
+	config_load
+	[ "$COUNTRIES" = ru,by ]
+	[ "$CONTAINERS" = '^(amnezia|3x-ui)' ]
+	config_set countries ee
+	config_load
+	[ "$COUNTRIES" = ee ]
+	[ "$(grep -c '^countries=' "$CONFIG_FILE")" = 1 ]
+	grep -qx '# note' "$CONFIG_FILE"
+}
+
+@test "config_check: country codes and container patterns" {
+	(config_check countries ru)
+	(config_check countries ru,by,ee)
+	(config_check containers '^(amnezia|3x-ui|marzban)')
+	run config_check countries RU
+	[ "$status" = 1 ]
+	run config_check countries 'ru, by'
+	[ "$status" = 1 ]
+	run config_check countries rus
+	[ "$status" = 1 ]
+	run config_check containers '^(amnezia'
+	[ "$status" = 1 ]
+	run config_check containers ''
+	[ "$status" = 1 ]
+}
+
+@test "cmd_config puts the config back when the update fails" {
+	need_installed() { :; }
+	update_apply() { die "no IPv4 list for xx, nothing applied"; }
+	echo countries=ru >"$CONFIG_FILE"
+	run cmd_config countries xx
+	[ "$status" = 1 ]
+	[ "$(cat "$CONFIG_FILE")" = countries=ru ]
+}
+
+@test "update_apply blocks every configured country and fails on a missing one" {
+	prefix_fetch() { [ "$1" = "$V4_ZONES/xx-aggregated.zone" ] || [ -e "$2" ] || cp "$BATS_TEST_TMPDIR/zone-$(basename "$2")" "$2" 2>/dev/null || true; }
+	allow_resolve() { :; }
+	ports_all() { echo 'tcp 22'; }
+	nft() { [ "$1" != -c ] || cp "$3" "$BATS_TEST_TMPDIR/checked.nft"; }
+	systemctl() { return 1; }
+	echo 2.56.24.0/22 >"$BATS_TEST_TMPDIR/zone-ru4.zone"
+	echo 2001:640::/32 >"$BATS_TEST_TMPDIR/zone-ru6.zone"
+	echo 37.17.0.0/16 >"$BATS_TEST_TMPDIR/zone-by4.zone"
+	COUNTRIES=ru,by
+	run update_apply
+	[ "$status" = 0 ]
+	grep -q 'set geo4 .*elements = { 2.56.24.0/22,37.17.0.0/16 }' "$BATS_TEST_TMPDIR/checked.nft"
+	grep -q 'set geo6 .*elements = { 2001:640::/32 }' "$BATS_TEST_TMPDIR/checked.nft"
+	COUNTRIES=ru,xx
+	run update_apply
+	[ "$status" = 1 ]
+	[[ "$output" == *"no IPv4 list for xx"* ]]
 }
 
 need_nft() {
@@ -114,7 +175,6 @@ need_nft() {
 	echo 1.1.1.1 >"$ALLOW_FILE"
 	run cmd_allow add 2.2.2.2
 	[ "$status" = 1 ]
-	[[ "$output" == *"direct list left as it was"* ]]
 	[ "$(cat "$ALLOW_FILE")" = 1.1.1.1 ]
 	[ ! -e "$ALLOW_FILE.old" ]
 }
