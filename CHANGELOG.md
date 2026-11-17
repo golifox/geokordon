@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-17
+
 ### Added
 
 - `geokordon` lives on the server in `/usr/local/sbin` and does everything there: `sudo geokordon warp on` works without your machine.
@@ -62,7 +64,8 @@ Run `geokordon -H root@host install` (or the `install.sh` line on the server): i
 - `./ru-block remove`: removes the geoblock and WARP.
 - Interactive login: server IP, SSH port (default 22), user (default root), password or SSH key; non-root users run through sudo, with fix hints when key login or passwordless sudo fails.
 
-[Unreleased]: https://github.com/golifox/geokordon/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/golifox/geokordon/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/golifox/geokordon/releases/tag/v0.4.0
 [0.3.1]: https://github.com/golifox/geokordon/releases/tag/v0.3.1
 [0.3.0]: https://github.com/golifox/geokordon/releases/tag/v0.3.0
 [0.2.0]: https://github.com/golifox/geokordon/releases/tag/v0.2.0
