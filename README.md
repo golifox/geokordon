@@ -40,4 +40,8 @@ Requirements: Debian or Ubuntu with Amnezia in Docker on the server; `bash`, `ta
 | `remote/` | copied to the server per run: `run.sh` dispatches to `install.sh`, `warp.sh`, `remove.sh` |
 | `remote/files/` | installed on the server: refresh and WARP helpers, systemd units |
 
-`mise run lint` runs shellcheck over every script.
+`mise run lint` runs shellcheck over every script. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+[MIT](LICENSE)
