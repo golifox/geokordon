@@ -23,8 +23,11 @@ cmd_status() {
 		echo "Open to them: $(paste -sd, - <"$CACHE/ports" | sed 's/,/, /g')"
 	fi
 	allow_show
+	# After a boot the WARP unit waits for Docker; enabled but not yet active is not off.
 	if systemctl is-active --quiet geokordon-warp.service; then
 		echo "WARP: on"
+	elif systemctl is-enabled --quiet geokordon-warp.service 2>/dev/null; then
+		echo "WARP: enabled, starting (after Docker) or failed: systemctl status geokordon-warp"
 	else
 		echo "WARP: off"
 	fi

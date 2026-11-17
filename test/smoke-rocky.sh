@@ -16,8 +16,10 @@ docker run -d --name "$NAME" --privileged --cgroupns=host -v /sys/fs/cgroup:/sys
 x() { docker exec "$NAME" "$@"; }
 step() { echo "=== $*"; }
 
+# is-system-running exits non-zero on degraded, so the state is read, not piped.
 for _ in $(seq 90); do
-	if x systemctl is-system-running 2>/dev/null | grep -qE '^(running|degraded)$'; then break; fi
+	state="$(x systemctl is-system-running 2>/dev/null || true)"
+	if [[ "$state" =~ ^(running|degraded)$ ]]; then break; fi
 	sleep 2
 done
 
@@ -32,7 +34,7 @@ x geokordon status | grep >/dev/null 'Blocked countries: ru,by'
 x test -s /var/lib/geokordon/by4.zone
 step "a bad country leaves the config as it was"
 if x geokordon config countries ru,xx; then exit 1; fi
-x geokordon config | grep -x 'countries=ru,by' >/dev/null
+x gk config | grep -x 'countries=ru,by' >/dev/null
 
 step "allow add"
 x geokordon allow add 1.1.1.1
@@ -56,4 +58,5 @@ step remove
 x geokordon remove
 if x nft list table inet geokordon >/dev/null 2>&1; then exit 1; fi
 x test ! -e /usr/local/sbin/geokordon
+x test ! -e /usr/local/sbin/gk
 echo "smoke on Rocky 9: ok"

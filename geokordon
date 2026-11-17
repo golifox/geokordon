@@ -8,7 +8,15 @@ GEOKORDON_VERSION=0.5.0
 GEOKORDON_SELF="${BASH_SOURCE[0]}"
 
 # >>> sources: scripts/build puts the modules and units here.
-GEOKORDON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Through symlinks (a gk link in ~/.local/bin, say) to the checkout; readlink -f is not in
+# every macOS.
+_self="${BASH_SOURCE[0]}"
+while [ -L "$_self" ]; do
+	_dir="$(cd "$(dirname "$_self")" && pwd)"
+	_self="$(readlink "$_self")"
+	case "$_self" in /*) ;; *) _self="$_dir/$_self" ;; esac
+done
+GEOKORDON_ROOT="$(cd "$(dirname "$_self")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$GEOKORDON_ROOT/lib/common.sh"
 # shellcheck source=lib/config.sh
@@ -61,6 +69,7 @@ Options:
   --version              print the version
 
 On Linux the command runs locally as root. Elsewhere without a target it asks for one.
+On the server install also adds the short name gk.
 EOF
 }
 
