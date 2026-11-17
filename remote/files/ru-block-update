@@ -66,9 +66,15 @@ nft_file="$CACHE/ru-block.nft"
 	echo "  chain forward {"
 	# VPN clients must not reach RU destinations through this server.
 	# Only connections initiated towards RU; replies to RU clients stay allowed.
+	# TCP gets a reset: macOS and other BSD stacks ignore ICMP unreachable while connecting
+	# and would hang until timeout.
 	echo "    type filter hook forward priority -10; policy accept;"
+	echo "    ct direction original ip daddr @ru4 meta l4proto tcp reject with tcp reset"
 	echo "    ct direction original ip daddr @ru4 reject"
-	if [ -n "$v6" ]; then echo "    ct direction original ip6 daddr @ru6 reject"; fi
+	if [ -n "$v6" ]; then
+		echo "    ct direction original ip6 daddr @ru6 meta l4proto tcp reject with tcp reset"
+		echo "    ct direction original ip6 daddr @ru6 reject"
+	fi
 	echo "  }"
 	echo "}"
 } >"$nft_file"
