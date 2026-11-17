@@ -4,7 +4,7 @@
 # target it runs itself on that server over ssh.
 set -euo pipefail
 
-GEOKORDON_VERSION=0.5.0
+GEOKORDON_VERSION=0.6.0
 GEOKORDON_SELF="${BASH_SOURCE[0]}"
 
 # >>> sources: scripts/build puts the modules and units here.
